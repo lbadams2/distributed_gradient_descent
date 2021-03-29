@@ -1,6 +1,4 @@
-#include <string>
-#include <iostream>
-#include <fstream>
+#include "load_image.h"
 
 // pixels range from 0-255
 // 28x28 images = 784 pixels
@@ -12,8 +10,6 @@ uchar** read_mnist_images(string full_path, int& number_of_images, int& image_si
         c1 = i & 255, c2 = (i >> 8) & 255, c3 = (i >> 16) & 255, c4 = (i >> 24) & 255;
         return ((int)c1 << 24) + ((int)c2 << 16) + ((int)c3 << 8) + c4;
     };
-
-    typedef unsigned char uchar;
 
     ifstream file(full_path, ios::binary);
 
@@ -50,8 +46,6 @@ uchar* read_mnist_labels(string full_path, int& number_of_labels) {
         return ((int)c1 << 24) + ((int)c2 << 16) + ((int)c3 << 8) + c4;
     };
 
-    typedef unsigned char uchar;
-
     ifstream file(full_path, ios::binary);
 
     if(file.is_open()) {
@@ -73,8 +67,15 @@ uchar* read_mnist_labels(string full_path, int& number_of_labels) {
     }
 }
 
+array2D convert_to_2d(uchar* image, int image_size) {
+    array2D img = array<array<double, image_size>, image_size>();
+    return img;
+}
+
 int main() {
-    int* number_of_images = 0;
-    int* image_size = 0;
+    int number_of_images = 0;
+    int image_size = 0;
     uchar** image_arr = read_mnist_images("/Users/liam_adams/my_repos/csc724_project/data/train-images-idx3-ubyte", number_of_images, image_size);
+    cout << "number of images " << number_of_images;
+    delete image_arr;
 }

@@ -1,2 +1,6 @@
 bazel*
 data
+*.o
+*.out
+load_image
+.vscode
