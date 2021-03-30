@@ -16,6 +16,7 @@ using std::sqrt;
 using std::default_random_engine;
 using std::unordered_map;
 using std::string;
+using std::vector;
 using array3D = vector<vector<vector<double> > >;
 using array2D = vector<vector<double> >;
 
@@ -23,7 +24,7 @@ class Conv_Layer {
 public:
     Conv_Layer(int num_filters);
     array3D forward(array2D image, int stride);
-    unordered_map<string, unordered_map> backward(vector<double> grad_conv_prev, int filter_ind);
+    unordered_map<string, unordered_map> backward(vector<double> grad_conv_prev);
 private:
     array3D filters;
     vector<double> bias;

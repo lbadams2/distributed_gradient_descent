@@ -35,6 +35,43 @@ Dense_Layer::Dense_Layer(int in_dim, int out_dim): in_dim(in_dim), out_dim(out_d
         bias[i] = 0;
 }
 
+// dprev is gradient of loss function from one node forward (we're moving backwards here)
+// do forward and backward pass for each image, calculate gradient for each image
+// collect them all in each batch and then update weights and biases at the end of the batch
+unordered_map<string, unordered_map> Conv_Layer::backward(array3D dprev, array2D image) {
+    int num_filters = filters.size();
+    int num_images = image_batch.size();
+    int image_dim = image_batch[0].size(); // dimension of images, they may have been downsampled
+    array3D dx = image_batch; // should use copy constructor
+    array3D df = filters;
+    vector<double> db = bias;
+
+    for(int curr_f = 0; curr_f < num_filters; curr_f++) {
+        int curr_y, out_y = 0;
+        while(curr_y + FILTER_DIM <= image_dim) {
+            int curr_x, out_x = 0;
+            while(curr_x + FILTER_DIM <= image_dim) {
+                double curr_sum = 0;
+                for(int i = 0; i < num_images; i++)
+                    for(int r = curr_y, int f_r = 0; r < curr_y + FILTER_DIM; r++, f_r++) {
+                        for(int c = curr_x, int f_c = 0; c < curr_x + FILTER_DIM; c++, f_c++) {
+                            // dL/dF_ij = dL/dprev_ij * X_ij
+                            // dL/dF = conv(X, dL/dprev), normal convolution using only full overlap
+                            double prod = dprev[curr_f][out_y][out_x] * image_batch[i][curr_y][curr_x];
+                            df[curr_f][out_y][out_x] += prod;
+                            
+                            // dL/dX_ij = dL/dprev_ij * F_ij
+                            // dl/dX = conv(rot180(F), dL/dprev)
+                            prod = dprev[curr_f][out_y][out_x] * 
+                            dx[i][curr_y][curr_x] = 
+                        }
+                    }
+                    df[curr_f] += dprev[curr_f][out_y][out_x]
+            }
+        }
+    }
+}
+
 // use std::array if size is fixed at compile time, vector if not
 array3D Conv_Layer::forward(array2D image, int stride) {
     out_dim = floor(((IMAGE_DIM - FILTER_DIM) / stride) + 1);
@@ -72,8 +109,8 @@ array2D maxpool(array2D image, int kernel_size, int stride) {
         int curr_x, out_x = 0;
         while(curr_x + kernel_size <= IMAGE_DIM) {
             int max = 0;
-            for(int r = curr_y, int f_r = 0; r < curr_y + FILTER_DIM; r++, f_r++) {
-                for(int c = curr_x, int f_c = 0; c < curr_x + FILTER_DIM; c++, f_c++) {
+            for(int r = curr_y; r < curr_y + FILTER_DIM; r++) {
+                for(int c = curr_x; c < curr_x + FILTER_DIM; c++) {
                     if(image[r][c] > max)
                         max = image[r][c];
                     downsampled[out_y][out_x] = max;
