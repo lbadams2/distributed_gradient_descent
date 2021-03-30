@@ -67,15 +67,18 @@ uchar* read_mnist_labels(string full_path, int& number_of_labels) {
     }
 }
 
-array2D convert_to_2d(uchar* image, int image_size) {
-    array2D img = array<array<double, image_size>, image_size>();
-    return img;
+array3D convert_to_2d(uchar** images, int image_size, int num_images) {
+    vector<vector<vector<double> > > square_images(num_images, vector<vector<double> >(image_size, vector<double>(image_size)));
+
+    return square_images;
 }
 
 int main() {
     int number_of_images = 0;
     int image_size = 0;
     uchar** image_arr = read_mnist_images("/Users/liam_adams/my_repos/csc724_project/data/train-images-idx3-ubyte", number_of_images, image_size);
-    cout << "number of images " << number_of_images;
+    cout << "number of images " << number_of_images << endl;
+    cout << "image size " << image_size << endl;
+    //array3D images = convert_to_2d(image_arr, image_size, number_of_images);
     delete image_arr;
 }
