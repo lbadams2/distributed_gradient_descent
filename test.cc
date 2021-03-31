@@ -9,6 +9,7 @@ using std::cout;
 using std::endl;
 using std::reverse;
 using std::vector;
+using std::min;
 using array2D = vector<vector<double> >;
 using array3D = vector<vector<vector<double> > >;
 #define IMAGE_DIM 3
@@ -154,6 +155,17 @@ array2D rotate_180(array2D filter)
     return filter;
 }
 
+void print_filter(array2D filter) {
+    cout << "printing filter" << endl;
+    for (int i = 0; i < FILTER_DIM; i++)
+    {
+        cout << endl;
+        for (int j = 0; j < FILTER_DIM; j++)
+            cout << filter[i][j] << " ";
+    }
+    cout << endl;
+}
+
 void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3D &df, array3D &dx)
 {
     int num_images = image.size();
@@ -161,7 +173,7 @@ void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3
     int dprev_dim = dprev[0].size();
     int image_dim = image.size();
     int out_dim_f = floor(((image_dim - dprev_dim) / stride) + 1); // 6
-    int out_dim_x = image_dim;
+    int out_dim_x = dprev_dim + FILTER_DIM - 1;
 
     for (int f = 0; f < num_filters; f++)
     {
@@ -191,27 +203,50 @@ void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3
             curr_y += stride;
             out_y++;
         }
-        print_matrices_df(image, dprev[f], df[f], out_dim_f);
+        //print_matrices_df(image, dprev[f], df[f], out_dim_f);
 
         // calculate dL/dX
-        array2D curr_f = filters[f];
-        curr_f = rotate_180(curr_f);
-        curr_y = FILTER_DIM, out_y = 0;
-        while (curr_y >= 0)
+        array2D orig_f = filters[f];
+        print_filter(orig_f);
+        array2D curr_f = rotate_180(orig_f);
+        print_filter(curr_f);
+        curr_y = FILTER_DIM - 1; // start on the bottom and move up
+        out_y = 0;
+        while (curr_y > -1 * dprev_dim)
         {
-            int curr_x = FILTER_DIM, out_x = 0;
-            int y_overlap = (FILTER_DIM - curr_y) + 1;
-            while (curr_x >= 0)
+            int curr_x = FILTER_DIM - 1; // start all the way to the right and move left
+            int out_x = 0, conv_start_y = 0, conv_limit_y = 0, filt_start_y = 0;
+            if(out_y < FILTER_DIM) {
+                conv_start_y = 0;
+                conv_limit_y = out_y + 1;
+                filt_start_y = FILTER_DIM - (out_y + 1);
+            }
+            else {
+                conv_start_y = curr_y + FILTER_DIM;
+                conv_limit_y = FILTER_DIM;
+                filt_start_y = 0;
+            }
+            while (curr_x > -1 * dprev_dim)
             {
                 double sum = 0;
-                int x_overlap = (FILTER_DIM - curr_x) + 1;
-                for (int kr = 0; kr < y_overlap; kr++)
+                int conv_start_x = 0, conv_limit_x = 0, filt_start_x = 0;
+                if(out_x < FILTER_DIM) {
+                    conv_start_x = 0;
+                    conv_limit_x = out_x + 1;
+                    filt_start_x = FILTER_DIM - (out_x + 1);
+                }
+                else {
+                    conv_start_x = curr_x + FILTER_DIM; // if conv hanging off left side curr_x is negative
+                    conv_limit_x = FILTER_DIM;
+                    filt_start_x = 0; // if conv hanging off left side should always start at left most column
+                }
+                for (int dr = conv_start_y, fr = filt_start_y ; dr < conv_limit_y; dr++, fr++)
                 {
-                    for (int kc = 0; kc < x_overlap; kc++)
+                    for (int dc = conv_start_x, fc = filt_start_x ; dc < conv_limit_x; dc++, fc++)
                     {
                         // dL/dX_ij = dL/dprev_ij * F_ij
                         // dL/dX = conv(rot180(F), dL/dprev), full convolution
-                        double prod = dprev[f][kr][kc] * curr_f[curr_y][curr_x];
+                        double prod = dprev[f][dr][dc] * curr_f[fr][fc];
                         sum += prod;
                     }
                 }
@@ -311,7 +346,7 @@ void test_conv_bp()
     int out_dim_f = floor(((image_dim - dprev_dim) / stride) + 1); // 6
     vector<vector<vector<double> > > df(num_filters, vector<vector<double> >(out_dim_f, vector<double>(out_dim_f)));
 
-    int out_dim_x = image_dim;
+    int out_dim_x = dprev_dim + FILTER_DIM - 1;
     vector<vector<vector<double> > > dx(num_filters, vector<vector<double> >(out_dim_x, vector<double>(out_dim_x)));
 
     for (int i = 0; i < num_images; i++)
