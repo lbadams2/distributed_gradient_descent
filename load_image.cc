@@ -67,10 +67,29 @@ uchar* read_mnist_labels(string full_path, int& number_of_labels) {
     }
 }
 
-array3D convert_to_2d(uchar** images, int image_size, int num_images) {
-    vector<vector<vector<double> > > square_images(num_images, vector<vector<double> >(image_size, vector<double>(image_size)));
-
+array3D<uint8_t> convert_to_2d(uchar** images, int image_size, int num_images) {
+    int image_dim = (int)sqrt(image_size);
+    vector<vector<vector<uint8_t> > > square_images(num_images, vector<vector<uint8_t> >(image_dim, vector<uint8_t>(image_dim)));
+    for(int n = 0; n < num_images; n++) {
+        vector<vector<uint8_t> > image_vec(image_dim, vector<uint8_t>(image_dim));
+        uchar* image = images[n];
+        for(int i = 0; i < image_dim; i++) {
+            for(int j = 0; j < image_dim; j++) {
+                int image_index = (image_dim * i) + j;
+                image_vec[i][j] = image[image_index];
+            }
+        }
+        square_images[n] = image_vec;
+    }
     return square_images;
+}
+
+vector<int> convert_labels(uchar* labels, int num_labels) {
+    vector<int> label_vec(num_labels);
+    for(int i = 0; i < num_labels; i++) {
+        label_vec[i] = labels[i];
+    }
+    return label_vec;
 }
 
 int main() {
@@ -79,6 +98,12 @@ int main() {
     uchar** image_arr = read_mnist_images("/Users/liam_adams/my_repos/csc724_project/data/train-images-idx3-ubyte", number_of_images, image_size);
     cout << "number of images " << number_of_images << endl;
     cout << "image size " << image_size << endl;
-    //array3D images = convert_to_2d(image_arr, image_size, number_of_images);
+    array3D<uint8_t> images = convert_to_2d(image_arr, image_size, number_of_images);
+    cout << "number of images in vec " << images.size() << endl;
+    
+    int num_labels = 0;
+    uchar* label_arr = read_mnist_labels("/Users/liam_adams/my_repos/csc724_project/data/train-labels-idx1-ubyte", num_labels);
+    vector<int> labels = convert_labels(label_arr, num_labels);
+    cout << "number of labels " << labels.size() << endl;
     delete image_arr;
 }

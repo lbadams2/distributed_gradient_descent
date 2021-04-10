@@ -4,3 +4,5 @@ data
 *.out
 load_image
 .vscode
+test
+*.dSYM

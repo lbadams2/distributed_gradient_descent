@@ -11,4 +11,9 @@ using std::runtime_error;
 using std::cout;
 using std::endl;
 using std::vector;
-using array3D = vector<vector<vector<double> > >;
+
+template<typename T>
+using array2D = vector<vector<T> >;
+
+template<typename T>
+using array3D = vector<vector<vector<T> > >;

@@ -1,8 +1,12 @@
+#include "opencv2/highgui.hpp"
 #include <vector>
 #include <array>
 #include <random>
 #include <iostream>
 #include <algorithm>
+#include <fstream>
+#include <string>
+#include <cmath>
 
 using std::array;
 using std::cout;
@@ -10,12 +14,24 @@ using std::endl;
 using std::reverse;
 using std::vector;
 using std::min;
-using array2D = vector<vector<double> >;
-using array3D = vector<vector<vector<double> > >;
+using std::string;
+using std::ifstream;
+using std::ios;
+using std::runtime_error;
+using std::sqrt;
+
+typedef unsigned char uchar;
+
+template<typename T>
+using array2D = vector<vector<T> >;
+
+template<typename T>
+using array3D = vector<vector<vector<T> > >;
+
 #define IMAGE_DIM 3
 #define FILTER_DIM 2
 
-void print_matrices_conv(array2D image, array2D filter, array2D conv, int out_dim)
+void print_matrices_conv(array2D<int> image, array2D<int> filter, array2D<int> conv, int out_dim)
 {
     cout << "printing image" << endl;
     for (int i = 0; i < IMAGE_DIM; i++)
@@ -45,7 +61,7 @@ void print_matrices_conv(array2D image, array2D filter, array2D conv, int out_di
     cout << "\n\n";
 }
 
-void print_matrices_df(array2D image, array2D dprev, array2D df, int out_dim)
+void print_matrices_df(array2D<int> image, array2D<int> dprev, array2D<int> df, int out_dim)
 {
     cout << "printing image" << endl;
     int image_dim = image.size(); // may be downsampled
@@ -77,7 +93,7 @@ void print_matrices_df(array2D image, array2D dprev, array2D df, int out_dim)
     cout << "\n\n";
 }
 
-void print_matrices_dx(array2D filter, array2D dprev, array2D dx, int out_dim)
+void print_matrices_dx(array2D<int> filter, array2D<int> dprev, array2D<int> dx, int out_dim)
 {
     cout << "printing filter" << endl;
     int filter_dim = filter.size(); // may be downsampled
@@ -111,12 +127,12 @@ void print_matrices_dx(array2D filter, array2D dprev, array2D dx, int out_dim)
 
 // value at top left corner of kernel multiplied by value at bottom right of neighborhood
 // size of std::array cannot be set with variable at runtime
-array3D convolution(array2D image, array3D filters, int stride)
+array3D<int> convolution(array2D<int> image, array3D<int> filters, int stride)
 {
     int num_images = image.size();
     int num_filters = filters.size();
     const int out_dim = floor(((IMAGE_DIM - FILTER_DIM) / stride) + 1); // 6
-    vector<vector<vector<double> > > out_conv(num_filters, vector<vector<double> >(out_dim, vector<double>(out_dim)));
+    vector<vector<vector<int> > > out_conv(num_filters, vector<vector<int> >(out_dim, vector<int>(out_dim)));
     for (int f = 0; f < num_filters; f++)
     {
         int curr_y = 0, out_y = 0;
@@ -147,7 +163,7 @@ array3D convolution(array2D image, array3D filters, int stride)
     return out_conv;
 }
 
-array2D rotate_180(array2D filter)
+array2D<int> rotate_180(array2D<int> filter)
 {
     reverse(std::begin(filter), std::end(filter)); // reverse rows
     std::for_each(std::begin(filter), std::end(filter),
@@ -155,7 +171,7 @@ array2D rotate_180(array2D filter)
     return filter;
 }
 
-void print_filter(array2D filter) {
+void print_filter(array2D<int> filter) {
     cout << "printing filter" << endl;
     for (int i = 0; i < FILTER_DIM; i++)
     {
@@ -166,7 +182,7 @@ void print_filter(array2D filter) {
     cout << endl;
 }
 
-void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3D &df, array3D &dx)
+void conv_back(array3D<int> dprev, array3D<int> filters, array2D<int> image, int stride, array3D<int> &df, array3D<int> &dx)
 {
     int num_images = image.size();
     int num_filters = filters.size();
@@ -207,9 +223,9 @@ void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3
         //print_matrices_df(image, dprev[f], df[f], out_dim_f);
 
         // calculate dL/dX
-        array2D orig_f = filters[f];
+        array2D<int> orig_f = filters[f];
         print_filter(orig_f);
-        array2D curr_f = rotate_180(orig_f);
+        array2D<int> curr_f = rotate_180(orig_f);
         print_filter(curr_f);
         curr_y = FILTER_DIM - 1; // start on the bottom and move up
         out_y = 0;
@@ -265,7 +281,7 @@ void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3
     }
 }
 
-void create_data_forward(array3D &images, array3D &filters, int num_images, int num_filters)
+void create_data_forward(array3D<int> &images, array3D<int> &filters, int num_images, int num_filters)
 {
     std::random_device rand_dev;
     std::mt19937 generator(rand_dev());
@@ -288,7 +304,7 @@ void create_data_forward(array3D &images, array3D &filters, int num_images, int 
     }
 }
 
-void create_data_back(array3D &images, array3D &filters, array3D &dprev, int num_images, int num_filters)
+void create_data_back(array3D<int> &images, array3D<int> &filters, array3D<int> &dprev, int num_images, int num_filters)
 {
     std::random_device rand_dev;
     std::mt19937 generator(rand_dev());
@@ -323,8 +339,8 @@ void test_conv()
 {
     int num_images = 3;
     int num_filters = 2;
-    vector<vector<vector<double> > > images(num_images, vector<vector<double> >(IMAGE_DIM, vector<double>(IMAGE_DIM)));
-    vector<vector<vector<double> > > filters(num_filters, vector<vector<double> >(FILTER_DIM, vector<double>(FILTER_DIM)));
+    vector<vector<vector<int> > > images(num_images, vector<vector<int> >(IMAGE_DIM, vector<int>(IMAGE_DIM)));
+    vector<vector<vector<int> > > filters(num_filters, vector<vector<int> >(FILTER_DIM, vector<int>(FILTER_DIM)));
     create_data_forward(images, filters, num_images, num_filters);
     for (int i = 0; i < num_images; i++)
     {
@@ -337,19 +353,19 @@ void test_conv_bp()
 {
     int num_images = 3;
     int num_filters = 2;
-    vector<vector<vector<double> > > images(num_images, vector<vector<double> >(IMAGE_DIM, vector<double>(IMAGE_DIM)));
-    vector<vector<vector<double> > > filters(num_filters, vector<vector<double> >(FILTER_DIM, vector<double>(FILTER_DIM)));
-    vector<vector<vector<double> > > dprev(num_filters, vector<vector<double> >(FILTER_DIM, vector<double>(FILTER_DIM)));
+    vector<vector<vector<int> > > images(num_images, vector<vector<int> >(IMAGE_DIM, vector<int>(IMAGE_DIM)));
+    vector<vector<vector<int> > > filters(num_filters, vector<vector<int> >(FILTER_DIM, vector<int>(FILTER_DIM)));
+    vector<vector<vector<int> > > dprev(num_filters, vector<vector<int> >(FILTER_DIM, vector<int>(FILTER_DIM)));
     create_data_back(images, filters, dprev, num_images, num_filters);
 
     int image_dim = images[0].size(); // may have been downsampled
     int dprev_dim = dprev[0].size();
     int stride = 1;
     int out_dim_f = floor(((image_dim - dprev_dim) / stride) + 1); // 6
-    vector<vector<vector<double> > > df(num_filters, vector<vector<double> >(out_dim_f, vector<double>(out_dim_f)));
+    vector<vector<vector<int> > > df(num_filters, vector<vector<int> >(out_dim_f, vector<int>(out_dim_f)));
 
     int out_dim_x = dprev_dim + FILTER_DIM - 1;
-    vector<vector<vector<double> > > dx(num_filters, vector<vector<double> >(out_dim_x, vector<double>(out_dim_x)));
+    vector<vector<vector<int> > > dx(num_filters, vector<vector<int> >(out_dim_x, vector<int>(out_dim_x)));
 
     for (int i = 0; i < num_images; i++)
     {
@@ -358,8 +374,151 @@ void test_conv_bp()
     }
 }
 
+// pixels range from 0-255
+// 28x28 images = 784 pixels
+// each file starts with first 4 bytes int id, 4 bytes int for num images, 4 bytes int for num rows, 
+// 4 bytes int for num cols, sequence of unsigned bytes for each pixel
+uchar** read_mnist_images(string full_path, int& number_of_images, int& image_size) {
+    auto reverseInt = [](int i) {
+        unsigned char c1, c2, c3, c4;
+        c1 = i & 255, c2 = (i >> 8) & 255, c3 = (i >> 16) & 255, c4 = (i >> 24) & 255;
+        return ((int)c1 << 24) + ((int)c2 << 16) + ((int)c3 << 8) + c4;
+    };
+
+    ifstream file(full_path, ios::binary);
+
+    if(file.is_open()) {
+        int magic_number = 0, n_rows = 0, n_cols = 0;
+
+        file.read((char *)&magic_number, sizeof(magic_number));
+        magic_number = reverseInt(magic_number);
+
+        if(magic_number != 2051) throw runtime_error("Invalid MNIST image file!");
+
+        file.read((char *)&number_of_images, sizeof(number_of_images)), number_of_images = reverseInt(number_of_images);
+        file.read((char *)&n_rows, sizeof(n_rows)), n_rows = reverseInt(n_rows);
+        file.read((char *)&n_cols, sizeof(n_cols)), n_cols = reverseInt(n_cols);
+
+        image_size = n_rows * n_cols;
+
+        uchar** _dataset = new uchar*[number_of_images];
+        for(int i = 0; i < number_of_images; i++) {
+            _dataset[i] = new uchar[image_size];
+            file.read((char *)_dataset[i], image_size);
+        }
+        return _dataset;
+    } else {
+        throw runtime_error("Cannot open file `" + full_path + "`!");
+    }
+}
+
+// first 4 bytes int id, next 4 bytes int for number of labels, sequence of unsigned bytes for each label
+uchar* read_mnist_labels(string full_path, int& number_of_labels) {
+    auto reverseInt = [](int i) {
+        unsigned char c1, c2, c3, c4;
+        c1 = i & 255, c2 = (i >> 8) & 255, c3 = (i >> 16) & 255, c4 = (i >> 24) & 255;
+        return ((int)c1 << 24) + ((int)c2 << 16) + ((int)c3 << 8) + c4;
+    };
+
+    ifstream file(full_path, ios::binary);
+
+    if(file.is_open()) {
+        int magic_number = 0;
+        file.read((char *)&magic_number, sizeof(magic_number));
+        magic_number = reverseInt(magic_number);
+
+        if(magic_number != 2049) throw runtime_error("Invalid MNIST label file!");
+
+        file.read((char *)&number_of_labels, sizeof(number_of_labels)), number_of_labels = reverseInt(number_of_labels);
+
+        uchar* _dataset = new uchar[number_of_labels];
+        for(int i = 0; i < number_of_labels; i++) {
+            file.read((char*)&_dataset[i], 1);
+        }
+        return _dataset;
+    } else {
+        throw runtime_error("Unable to open file `" + full_path + "`!");
+    }
+}
+
+array3D<uint8_t> convert_to_2d(uchar** images, int image_size, int num_images) {
+    int image_dim = (int)sqrt(image_size);
+    vector<vector<vector<uint8_t> > > square_images(num_images, vector<vector<uint8_t> >(image_dim, vector<uint8_t>(image_dim)));
+    for(int n = 0; n < num_images; n++) {
+        vector<vector<uint8_t> > image_vec(image_dim, vector<uint8_t>(image_dim));
+        uchar* image = images[n];
+        for(int i = 0; i < image_dim; i++) {
+            for(int j = 0; j < image_dim; j++) {
+                int image_index = (image_dim * i) + j;
+                image_vec[i][j] = image[image_index];
+            }
+        }
+        square_images[n] = image_vec;
+    }
+    return square_images;
+}
+
+vector<int> convert_labels(uchar* labels, int num_labels) {
+    vector<int> label_vec(num_labels);
+    for(int i = 0; i < num_labels; i++) {
+        label_vec[i] = labels[i];
+    }
+    return label_vec;
+}
+
+void display_images(array3D<uint8_t> images) {
+    //  create grayscale image
+    array2D<uint8_t> image = images[0];
+    uint8_t image_arr[28*28];
+    for(int i = 0; i < 28; i++) {
+        for(int j = 0; j < 28; j++) {
+            int image_index = (28 * i) + j;
+            image_arr[image_index] = image[i][j];
+        }
+    }
+    cv::Mat imgGray(28, 28, CV_8UC1, image_arr);
+
+    cv::namedWindow("test", cv::WINDOW_AUTOSIZE);
+    cv::imshow("test", imgGray);
+    cv::waitKey(0);
+}
+
+/*
+// this works
+void display_images_char(uchar** images) {
+    uchar* image = images[40000];
+    uint8_t image_arr[28*28];
+    for(int i = 0; i < 784; i++) {
+        image_arr[i] = image[i];
+    }
+    cv::Mat imgGray(28, 28, CV_8UC1, image_arr);
+
+    cv::namedWindow("test", cv::WINDOW_AUTOSIZE);
+    cv::imshow("test", imgGray);
+    cv::waitKey(0);
+}
+*/
+
+void test_load_images() {
+    int number_of_images = 0;
+    int image_size = 0;
+    uchar** image_arr = read_mnist_images("/Users/liam_adams/my_repos/csc724_project/data/train-images-idx3-ubyte", number_of_images, image_size);
+    cout << "number of images " << number_of_images << endl;
+    cout << "image size " << image_size << endl;
+    //display_images_char(image_arr); // this works
+    array3D<uint8_t> images = convert_to_2d(image_arr, image_size, number_of_images);
+    cout << "number of images in vec " << images.size() << endl;
+    display_images(images);
+    
+    int num_labels = 0;
+    uchar* label_arr = read_mnist_labels("/Users/liam_adams/my_repos/csc724_project/data/train-labels-idx1-ubyte", num_labels);
+    vector<int> labels = convert_labels(label_arr, num_labels);
+    cout << "number of labels " << labels.size() << endl;
+}
+
 int main()
 {
-    test_conv_bp();
+    test_load_images();
+    //test_conv_bp();
     //test_conv();
 }
