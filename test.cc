@@ -190,7 +190,8 @@ void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3
                 {
                     for (int kc = 0; kc < dprev_dim; kc++)
                     {
-                        // dL/dF_ij = dL/dprev_ij * X_ij
+                        // dO/dF_ij = X_ij (local gradient)
+                        // dL/dF_ij = dL/dprev_ij * X_ij (chain rule)
                         // dL/dF = conv(X, dL/dprev), normal convolution using only full overlap
                         double prod = dprev[f][kr][kc] * image[curr_y + kr][curr_x + kc];
                         sum += prod;
@@ -221,8 +222,8 @@ void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3
                 conv_limit_y = out_y + 1;
                 filt_start_y = FILTER_DIM - (out_y + 1);
             }
-            else {
-                conv_start_y = curr_y + FILTER_DIM;
+            else { // this means d_prev hanging off top, curr_y is negative
+                conv_start_y = -1 * curr_y;
                 conv_limit_y = FILTER_DIM;
                 filt_start_y = 0;
             }
@@ -235,8 +236,8 @@ void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3
                     conv_limit_x = out_x + 1;
                     filt_start_x = FILTER_DIM - (out_x + 1);
                 }
-                else {
-                    conv_start_x = curr_x + FILTER_DIM; // if conv hanging off left side curr_x is negative
+                else { // this means dprev hanging off left side, curr_x is negative
+                    conv_start_x = -1 * curr_x;
                     conv_limit_x = FILTER_DIM;
                     filt_start_x = 0; // if conv hanging off left side should always start at left most column
                 }
@@ -244,7 +245,8 @@ void conv_back(array3D dprev, array3D filters, array2D image, int stride, array3
                 {
                     for (int dc = conv_start_x, fc = filt_start_x ; dc < conv_limit_x; dc++, fc++)
                     {
-                        // dL/dX_ij = dL/dprev_ij * F_ij
+                        // dO/dF_ij = F_ij (local gradient)
+                        // dL/dX_ij = dL/dprev_ij * F_ij (chain rule)   
                         // dL/dX = conv(rot180(F), dL/dprev), full convolution
                         double prod = dprev[f][dr][dc] * curr_f[fr][fc];
                         sum += prod;
