@@ -1,4 +1,4 @@
-#include "opencv2/highgui.hpp"
+//#include "opencv2/highgui.hpp"
 #include <vector>
 #include <array>
 #include <random>
@@ -466,6 +466,7 @@ vector<int> convert_labels(uchar* labels, int num_labels) {
     return label_vec;
 }
 
+/*
 void display_images(array3D<uint8_t> images) {
     //  create grayscale image
     array2D<uint8_t> image = images[0];
@@ -482,6 +483,7 @@ void display_images(array3D<uint8_t> images) {
     cv::imshow("test", imgGray);
     cv::waitKey(0);
 }
+*/
 
 /*
 // this works
@@ -508,7 +510,7 @@ void test_load_images() {
     //display_images_char(image_arr); // this works
     array3D<uint8_t> images = convert_to_2d(image_arr, image_size, number_of_images);
     cout << "number of images in vec " << images.size() << endl;
-    display_images(images);
+    //display_images(images);
     
     int num_labels = 0;
     uchar* label_arr = read_mnist_labels("/Users/liam_adams/my_repos/csc724_project/data/train-labels-idx1-ubyte", num_labels);

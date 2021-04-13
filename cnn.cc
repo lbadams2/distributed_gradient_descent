@@ -1,164 +1,86 @@
 #include "cnn.h"
 
-Conv_Layer::Conv_Layer(int nf): num_filters(nf) {
-    // filters initialized using standard normal, bias initialized all zeroes
-    filters = array<array<array<double, out_dim>, out_dim>, num_filters>();
-    stddev = 1 / sqrt(FILTER_DIM * FILTER_DIM);
-    normal_dist = normal_distribution<double> distribution(0, stddev);
-    default_random_engine generator;
-    for(int i = 0; i < num_filters; i++) {
-        for(int j = 0; j < FILTER_DIM; j++) {
-            for(int k = 0; k < FILTER_DIM; k++) {
-                double init_val = normal_dist(generator);
-                filters[i][j][k] = init_val;
-            }
-        }
-    }
-    bias = array<double, FILTER_DIM>();
-    for(int i = 0; i < FILTER_DIM; i++)
-        bias[i] = 0;
+void backprop() {
+    // one image at a time
+    // 2 dense layers dense_first and dense_last
+    // vectors are row vectors, transpose are column vectors
+    
+    // first step is to subtract probability vector for one hot label vector, this gives dout or dL/dout
+    // perfect prediction on all classes will be dout = 0
+    
+    // now dot product of dout with input to dense_last transposed, z^T gives dL/dW_last
+    // w_last * z + b_last = out, out is probability vector
+    // dL/dW_last = dL/dout * dout/dW_last, this is a matrix
+    
+    // dL/db_last = dL/dout * dout/db_last = dL/dout
+    // dout/db_last = 1, local gradient of addition operator wrt to val or bias (out = val + bias) is 1
+    // sum cols of dL/dout, if dL/dout is vector do nothing
+
+    // now find gradient of last dense layer input or first dense layer output z, dL/dz or dz
+    // dout is still gradient of previous layer
+    // w_last * z + b_last = out
+    // dL/dout * dout/dz, dout/dz = w_last
+    // w_last^T * dout = dz
+
+    // now run relu(dz)
+
+    // fc is flattened output of max pool or input to dense_first
+    // dL/dz * dz/dW_first gives dL/dW_first, this is a matrix
+    // dL/db_first is sum of cols of dz
+
+    // find gradient of fc
+    // wfirst * fc + b_first = z
+    // dL/dz * dz/dfc = dL/dfc
+    // w_first^T * dz = dL/dfc
+    
+    // now reshape dfc (unflatten) to match dimension of max pooling output
+    // pass this to max_pool.backward() to get dconv2
+
+    // now run relu(dconv2)
+
+    // run conv.backward(dconv2) = dconv1
+
+    // run relu(dconv1)
+
+    // run conv.backward(dconv1) = dimage
+
+    // now pass all gradients to adam optimizer
 }
 
-Dense_Layer::Dense_Layer(int in_dim, int out_dim): in_dim(in_dim), out_dim(out_dim) {
-    // init weights and bias
-    weights = array<array<double, out_dim>, in_dim>;
-    normal_dist = normal_distribution<double> distribution(0, 1);
-    default_random_engine generator;
-    for(int i = 0; i < in_dim; i++) {
-        for(int j = 0; j < out_dim; j++) {
-            double init_val = normal_dist(generator);
-            weights[i][j] = init_val * .01;
-        }
-    }
-    bias = array<double, out_dim>();
-    for(int i = 0; i < out_dim; i++)
-        bias[i] = 0;
-}
-
-// dprev is gradient of loss function from one node forward (we're moving backwards here)
-// do forward and backward pass for each image, calculate gradient for each image
-// collect them all in each batch and then update weights and biases at the end of the batch
-unordered_map<string, unordered_map> Conv_Layer::backward(array3D dprev, array2D image) {
-    int num_filters = filters.size();
-    int num_images = image_batch.size();
-    int image_dim = image_batch[0].size(); // dimension of images, they may have been downsampled
-    array3D dx = image_batch; // should use copy constructor
-    array3D df = filters;
-    vector<double> db = bias;
-
-    for(int curr_f = 0; curr_f < num_filters; curr_f++) {
-        int curr_y, out_y = 0;
-        while(curr_y + FILTER_DIM <= image_dim) {
-            int curr_x, out_x = 0;
-            while(curr_x + FILTER_DIM <= image_dim) {
-                double curr_sum = 0;
-                for(int i = 0; i < num_images; i++)
-                    for(int r = curr_y, int f_r = 0; r < curr_y + FILTER_DIM; r++, f_r++) {
-                        for(int c = curr_x, int f_c = 0; c < curr_x + FILTER_DIM; c++, f_c++) {
-                            // dL/dF_ij = dL/dprev_ij * X_ij
-                            // dL/dF = conv(X, dL/dprev), normal convolution using only full overlap
-                            double prod = dprev[curr_f][out_y][out_x] * image_batch[i][curr_y][curr_x];
-                            df[curr_f][out_y][out_x] += prod;
-                            
-                            // dL/dX_ij = dL/dprev_ij * F_ij
-                            // dl/dX = conv(rot180(F), dL/dprev)
-                            prod = dprev[curr_f][out_y][out_x] * 
-                            dx[i][curr_y][curr_x] = 
-                        }
-                    }
-                    df[curr_f] += dprev[curr_f][out_y][out_x]
-            }
-        }
-    }
-}
-
-// use std::array if size is fixed at compile time, vector if not
-array3D Conv_Layer::forward(array2D image, int stride) {
-    out_dim = floor(((IMAGE_DIM - FILTER_DIM) / stride) + 1);
-    array3D out = array<array<array<double, out_dim>, out_dim>, num_filters>();
-    for(int i = 0; i < num_filters; i++) {
-        int curr_y, out_y = 0; // location of 
-        array2D curr_f = array3D[i];
-        while(curr_y + FILTER_DIM <= IMAGE_DIM) {
-            int curr_x, out_x = 0;
-            while(curr_x + FILTER_DIM <= IMAGE_DIM) {
-                double curr_sum = 0;
-                for(int r = curr_y, int f_r = 0; r < curr_y + FILTER_DIM; r++, f_r++) {
-                    for(int c = curr_x, int f_c = 0; c < curr_x + FILTER_DIM; c++, f_c++) {
-                        double prod = image[r][c] * curr_f[f_r][f_c];
-                        curr_sum += prod;
-                        curr_sum += bias[i];
-                    }
-                }
-                out[i][out_y][out_x] = curr_sum;
-                curr_x += stride;
-                out_x++;
-            }
-            curr_y += stride;
-            out_y++;
-        }
-    }
-    return out;
-}
-
-array2D maxpool(array2D image, int kernel_size, int stride) {
-    new_dim = ((IMAGE_DIM - kernel_size) / stride) + 1;
-    array2D downsampled = array<array<double, new_dim>, new_dim>();
-    int curr_y, out_y = 0;
-    while(curr_y + kernel_size <= IMAGE_DIM) {
-        int curr_x, out_x = 0;
-        while(curr_x + kernel_size <= IMAGE_DIM) {
-            int max = 0;
-            for(int r = curr_y; r < curr_y + FILTER_DIM; r++) {
-                for(int c = curr_x; c < curr_x + FILTER_DIM; c++) {
-                    if(image[r][c] > max)
-                        max = image[r][c];
-                    downsampled[out_y][out_x] = max;
-                    curr_x += stride;
-                    out_x += 1;
-                }
-                curr_y += stride;
-                out_y += 1;
-            }
-        }
-    }
-    return downsampled;
-}
-
-array flatten(array2D image) {
-    rows = image.size();
-    cols = image[0].size();
-    flattened_dim = rows * cols;
-    array flattened = array<double, flattened_dim>();
+vector<int> flatten(array2D<int> &image) {
+    int rows = image.size();
+    int cols = image[0].size();
+    int flattened_dim = rows * cols;
+    vector<int> flattened(flattened_dim);
     for(int i = 0; i < rows; i++)
         for(int j = 0; j < cols; j++) {
-            k = (i * cols) + j;
+            int k = (i * cols) + j;
             flattened[k] = image[i][j];
         }
     return flattened;
 }
 
-void relu(array in) {
-    for( int &p : in )
+void relu(vector<double> &in) {
+    for( double &p : in )
         if(p < 0)
             p = 0;
 }
 
-void softmax(array in) {
+void softmax(vector<double> &in) {
     double sum = 0;
-    for( int &p : in ) {
+    for( double &p : in ) {
         exp(p);
         sum += p;
     }
-    for( int &p : in )
+    for( double &p : in )
         p /= sum;
 }
 
-double cat_cross_entropy(pred_probs, true_labels) {
+double cat_cross_entropy(vector<double> &pred_probs, vector<double> &true_labels) {
     int i, tmp = 0;
     double sum = 0;
-    for( int &p : pred_probs) {
-        l = true_labels[i];
+    for( double p : pred_probs) {
+        double l = true_labels[i];
         tmp = l * log(p);
         sum += tmp;
         i++;
@@ -166,21 +88,23 @@ double cat_cross_entropy(pred_probs, true_labels) {
     return -sum;
 }
 
-array Dense_Layer::forward(array in) {
-    rows = weights.size();
-    cols = weights[0].size();
-    array product = array<double, rows>();
-    int tmp = 0;
-    for(int i = 0; i < rows; i++) {
-        double out_value = 0;
-        for(int j = 0; j < cols; j++) {
-            tmp = weights[i][j] * in[j];
-            out_value += tmp;
-        }
-        product[i] = out_value;
-    }
+array2D<int> rotate_180(array2D<int> filter)
+{
+    reverse(begin(filter), end(filter)); // reverse rows
+    for_each(begin(filter), end(filter),
+                  [](auto &i) { reverse(begin(i), end(i)); }); // reverse columns
+    return filter;
+}
 
-    // ReLU
-    relu(product);
-    return product;
+array2D<double> transpose(array2D<double> w) {
+    int num_rows = w.size();
+    int num_cols = w[0].size();
+    vector<vector<double> > t(num_cols, vector<double>(num_rows));
+    for(int i = 0; i < num_rows; i++) {
+        vector<double> row = w[i];
+        for(int j = 0; j < num_cols; j++) {
+            t[j][i] = w[i][j];
+        }
+    }
+    return t;
 }
