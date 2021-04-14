@@ -10,8 +10,6 @@
 #include <limits>
 
 #define IMAGE_DIM 28
-#define FILTER_DIM 5
-#define POOL_DIM 2
 
 using std::floor;
 using std::exp;
@@ -33,24 +31,33 @@ using array3D = vector<vector<vector<T> > >;
 
 class Conv_Layer {
 public:
-    Conv_Layer(int num_filters);
-    array3D<double> forward(array2D<int> image, int stride);
-    void backward(array3D<double> dprev, array2D<int> image, int stride, array3D<double> &df, array3D<double> &dx);
+    Conv_Layer(int num_filters, int filter_dim, int stride);
+    array3D<double> forward(array3D<double> &image);
+    array3D<double> backward(array3D<double> &dprev);
 private:
     array3D<double> filters;
     vector<double> bias;
     int num_filters;
+    int stride;
+    int filter_dim;
     normal_distribution normal_dist;
+    array3D<double> image; // save this for back prop
+    array3D<double> df;
+    vector<double> dB;
 };
 
 class Dense_Layer {
 public:
     Dense_Layer(int in_dim, int out_dim);
     vector<double> forward(vector<double> &in);
-    void backward(vector<double> &dprev, vector<double> &orig_in, vector<double> &dW, vector<double> &dB, vector<double> &d_orig_in);
+    vector<double> backward(vector<double> &dprev);
 private:
     array2D<double> weights;
+    array2D<double> weights_T; // update this after each mini batch, after adam is run
     vector<double> bias;
+    array2D<double> dW;
+    vector<double> dB;
+    vector<double> orig_in; // save this for back prop
     int in_dim;
     int out_dim;
     normal_distribution normal_dist;
@@ -59,20 +66,34 @@ private:
 class MaxPool_Layer {
 public:
     MaxPool_Layer(int kernel_size, int stride);
-    array2D<double> forward(array2D<double> &processed_image);
-    array2D<double> backward(array2D<double> &dprev);
+    array3D<double> forward(array3D<double> &processed_image);
+    array3D<double> backward(array3D<double> &dprev);
 private:
-    void argmax(int curr_y, int curr_x, int &y_max, int &x_max);
+    void argmax(int channel_num, int curr_y, int curr_x, int &y_max, int &x_max);
     int kernel_size;
     int stride;
-    array2D<double> orig_image;
+    array3D<double> orig_image; // save this for back prop
 };
 
-vector<int> flatten(array2D<int> &image);
+class Model {
+public:
+    Model(int filter_dim, int pool_dim);
+    void backprop(vector<double> &probs, vector<int> &labels_one_hot);
+private:
+    vector<Dense_Layer> dense_layers;
+    vector<Conv_Layer> conv_layers;
+    MaxPool_Layer maxpool_layer;
+    int filter_dim;
+    int pool_dim;
+};
+
+vector<double> flatten(array3D<double> &image);
 void relu(vector<double> &in);
+void relu(array2D<double> &in);
 void softmax(vector<double> &in);
 double cat_cross_entropy(vector<double> &pred_probs, vector<double> &true_labels);
-array2D<int> rotate_180(array2D<int> filter);
-array2D<double> transpose(array2D<double> w);
+array2D<double> rotate_180(array2D<double> &filter);
+array2D<double> transpose(array2D<double> &w);
+vector<double> dot_product(array2D<double> &w, vector<double> &x);
 
 #endif

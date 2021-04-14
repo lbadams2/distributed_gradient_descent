@@ -14,38 +14,37 @@ Dense_Layer::Dense_Layer(int in_dim, int out_dim) : in_dim(in_dim), out_dim(out_
             weights[i][j] = init_val * .01;
         }
     }
+    weights_T = transpose(weights);
     vector<double> bias(out_dim, 0);
 }
 
 vector<double> Dense_Layer::forward(vector<double> &in)
 {
-    int rows = weights.size();
-    int cols = weights[0].size();
-    vector<double> product(rows);
-    int tmp = 0;
-    for (int i = 0; i < rows; i++)
-    {
-        double out_value = 0;
-        for (int j = 0; j < cols; j++)
-        {
-            tmp = weights[i][j] * in[j];
-            out_value += tmp;
-        }
-        product[i] = out_value;
-    }
-
+    vector<double> f = dot_product(weights, in);
+    for(int i = 0; i < f.size(); i++)
+        f[i] += bias[i];
     //relu(product);
-    return product;
+    orig_in = f; // save this for back propagation
+    return f;
 }
 
-// matrix matrix dot product is matrix
-// matrix vector dot product is vector
-// vector vector dot product is scalar
 // forward operation produces a vector
 // moving in backward direction, dprev is previous gradient
-void Dense_Layer::backward(vector<double> &dprev, vector<double> &orig_in, vector<double> &dW, vector<double> &dB, vector<double> &d_orig_in)
+// vectors are row vectors
+vector<double> Dense_Layer::backward(vector<double> &dprev)
 {
     // dW is outer product of dprev and orig_in to get matrix
-    // dB is sum of dprev along cols
+    for(int i  = 0; i < dprev.size(); i++) {
+        for(int j = 0; j < orig_in.size(); j++) {
+            dW[i][j] = dprev[i] * orig_in[j];
+        }
+    }
+
+    // dB is sum of dprev along cols, which i think is just dprev, dL/dprev * dprev/dB, prev = wx + b so dprev/dB = 1
+    for(int i = 0; i < dprev.size(); i++)
+        dB[i] = dprev[i];
+
     // d_orig_in is weights^T * dprev
+    vector<double> d_orig_in = dot_product(weights_T, dprev);
+    return d_orig_in;
 }
