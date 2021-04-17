@@ -29,17 +29,22 @@ using array2D = vector<vector<T> >;
 template<typename T>
 using array3D = vector<vector<vector<T> > >;
 
+template<typename T>
+using array4D = vector<vector<vector<vector<T> > > >;
+
 class Conv_Layer {
 public:
     Conv_Layer(int num_filters, int filter_dim, int stride);
     array3D<double> forward(array3D<double> &image);
     array3D<double> backward(array3D<double> &dprev);
+    int get_out_dim();
 private:
     array3D<double> filters;
     vector<double> bias;
     int num_filters;
     int stride;
     int filter_dim;
+    int out_dim;
     normal_distribution normal_dist;
     array3D<double> image; // save this for back prop
     array3D<double> df;
@@ -77,7 +82,7 @@ private:
 
 class Model {
 public:
-    Model(int filter_dim, int pool_dim);
+    Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride);
     void backprop(vector<double> &probs, vector<int> &labels_one_hot);
 private:
     vector<Dense_Layer> dense_layers;
@@ -85,11 +90,15 @@ private:
     MaxPool_Layer maxpool_layer;
     int filter_dim;
     int pool_dim;
+    int num_filters;
+    int pool_stride;
+    int conv_stride;
 };
 
+array3D<double> unflatten(vector<double> &vec, int num_filters, int pool_dim);
 vector<double> flatten(array3D<double> &image);
 void relu(vector<double> &in);
-void relu(array2D<double> &in);
+void relu(array3D<double> &in);
 void softmax(vector<double> &in);
 double cat_cross_entropy(vector<double> &pred_probs, vector<double> &true_labels);
 array2D<double> rotate_180(array2D<double> &filter);

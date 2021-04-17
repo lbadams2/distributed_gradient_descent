@@ -2,26 +2,27 @@
 
 array3D<double> MaxPool_Layer::forward(array3D<double> &image) {
     int num_channels = image.size();
-    int new_dim = ((IMAGE_DIM - kernel_size) / stride) + 1;
+    int orig_dim = image[0].size();
+    int new_dim = ((orig_dim - kernel_size) / stride) + 1;
     vector<vector<vector<double> > > downsampled(num_channels, vector<vector<double> >(new_dim, vector<double>(new_dim)));
     for(int n = 0; n < num_channels; n++) {
-        int curr_y, out_y = 0;
-        while(curr_y + kernel_size <= IMAGE_DIM) {
-            int curr_x, out_x = 0;
-            while(curr_x + kernel_size <= IMAGE_DIM) {
-                int max = 0;
+        int curr_y = 0, out_y = 0;
+        while(curr_y + kernel_size <= orig_dim) {
+            int curr_x = 0, out_x = 0;
+            while(curr_x + kernel_size <= orig_dim) {
+                double max = std::numeric_limits<double>::min();
                 for(int r = curr_y; r < curr_y + kernel_size; r++) {
                     for(int c = curr_x; c < curr_x + kernel_size; c++) {
                         if(image[n][r][c] > max)
                             max = image[n][r][c];
-                        downsampled[n][out_y][out_x] = max;
-                        curr_x += stride;
-                        out_x += 1;
-                    }
-                    curr_y += stride;
-                    out_y += 1;
+                        downsampled[n][out_y][out_x] = max;                        
+                    }                    
                 }
+                curr_x += stride;
+                out_x += 1;
             }
+            curr_y += stride;
+            out_y += 1;
         }
     }
     return downsampled;
