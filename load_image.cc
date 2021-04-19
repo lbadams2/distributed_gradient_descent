@@ -67,7 +67,7 @@ uchar* read_mnist_labels(string full_path, int& number_of_labels) {
     }
 }
 
-array3D<uint8_t> convert_to_2d(uchar** images, int image_size, int num_images) {
+array3D<uint8_t> convert_to_2d(uchar** images, int image_size, int num_images, int &image_dim, int &sum) {
     int image_dim = (int)sqrt(image_size);
     vector<vector<vector<uint8_t> > > square_images(num_images, vector<vector<uint8_t> >(image_dim, vector<uint8_t>(image_dim)));
     for(int n = 0; n < num_images; n++) {
@@ -77,6 +77,8 @@ array3D<uint8_t> convert_to_2d(uchar** images, int image_size, int num_images) {
             for(int j = 0; j < image_dim; j++) {
                 int image_index = (image_dim * i) + j;
                 image_vec[i][j] = image[image_index];
+                //image_vec[i][j] /= 255; // make everything [0, 1]
+                sum += image[image_index];
             }
         }
         square_images[n] = image_vec;
@@ -84,26 +86,80 @@ array3D<uint8_t> convert_to_2d(uchar** images, int image_size, int num_images) {
     return square_images;
 }
 
-vector<int> convert_labels(uchar* labels, int num_labels) {
-    vector<int> label_vec(num_labels);
+vector<uint8_t> convert_labels(uchar* labels, int num_labels) {
+    vector<uint8_t> label_vec(num_labels);
     for(int i = 0; i < num_labels; i++) {
         label_vec[i] = labels[i];
     }
     return label_vec;
 }
 
-int main() {
-    int number_of_images = 0;
-    int image_size = 0;
+float image_stddev(array3D<uint8_t> &images, int num_images, int image_dim, int sum, float &mean) {
+    int num_pixels = num_images * image_dim * image_dim;
+    mean = sum / num_pixels;
+    float stddev_sum = 0, tmp = 0;
+    for(int n = 0; n < num_images; n++)
+        for(int i = 0; i < image_dim; i++)
+            for(int j = 0; j < image_dim; j++) {
+                tmp = (images[n][i][j] - mean) * (images[n][i][j] - mean);
+                stddev_sum += tmp;
+            }
+    tmp = (1 / num_pixels) * stddev_sum;
+    float stddev = sqrt(tmp);
+    return stddev;
+}
+
+array3D<float> normalize_images(array3D<uint8_t> &images, int num_images, int image_dim, float mean, float stddev) {
+    vector<vector<vector<float> > > norm_images(num_images, vector<vector<float> >(image_dim, vector<float>(image_dim)));
+    float tmp = 0;
+    for(int n = 0; n < num_images; n++)
+        for(int i = 0; i < image_dim; i++)
+            for(int j = 0; j < image_dim; j++) {
+                tmp = images[n][i][j] - mean;
+                images[n][i][j] = tmp / stddev;
+            }
+    return norm_images;
+}
+
+array3D<float> get_training_images() {
+    int number_of_images = 0, image_size = 0;
     uchar** image_arr = read_mnist_images("/Users/liam_adams/my_repos/csc724_project/data/train-images-idx3-ubyte", number_of_images, image_size);
     cout << "number of images " << number_of_images << endl;
     cout << "image size " << image_size << endl;
-    array3D<uint8_t> images = convert_to_2d(image_arr, image_size, number_of_images);
+    int sum = 0, image_dim = 0;
+    float mean = 0;
+    array3D<uint8_t> images = convert_to_2d(image_arr, image_size, number_of_images, image_dim, sum);
+    float stddev = image_stddev(images, number_of_images, image_dim, sum, mean);
+    array3D<float> images_norm = normalize_images(images, number_of_images, image_dim, mean, stddev);
+    return images_norm;
+}
+
+vector<uint8_t> get_training_labels() {
+    int num_labels = 0;
+    uchar* label_arr = read_mnist_labels("/Users/liam_adams/my_repos/csc724_project/data/train-labels-idx1-ubyte", num_labels);
+    vector<uint8_t> labels = convert_labels(label_arr, num_labels);
+    cout << "number of labels " << labels.size() << endl;
+    return labels;
+}
+
+/*
+int main() {
+    int number_of_images = 0, image_size = 0;
+    uchar** image_arr = read_mnist_images("/Users/liam_adams/my_repos/csc724_project/data/train-images-idx3-ubyte", number_of_images, image_size);
+    cout << "number of images " << number_of_images << endl;
+    cout << "image size " << image_size << endl;
+    int sum = 0, image_dim = 0;
+    float mean = 0;
+    array3D<uint8_t> images = convert_to_2d(image_arr, image_size, number_of_images, image_dim, sum);
+    float stddev = image_stddev(images, number_of_images, image_dim, sum, mean);
+    array3D<float> images_norm = normalize_images(images, number_of_images, image_dim, mean, stddev);
     cout << "number of images in vec " << images.size() << endl;
     
     int num_labels = 0;
     uchar* label_arr = read_mnist_labels("/Users/liam_adams/my_repos/csc724_project/data/train-labels-idx1-ubyte", num_labels);
-    vector<int> labels = convert_labels(label_arr, num_labels);
+    vector<uint8_t> labels = convert_labels(label_arr, num_labels);
     cout << "number of labels " << labels.size() << endl;
     delete image_arr;
+    delete label_arr;
 }
+*/

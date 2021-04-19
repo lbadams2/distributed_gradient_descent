@@ -1,11 +1,40 @@
 #include "cnn.h"
 
-Model::Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride) : filter_dim(filter_dim), pool_dim(pool_dim), pool_stride(pool_stride), conv_stride(conv_stride)
+Model::Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride, int dense_first_out_dim) : filter_dim(filter_dim), pool_dim(pool_dim), pool_stride(pool_stride), conv_stride(conv_stride), dense_first_out_dim(dense_first_out_dim), maxpool_layer(pool_dim, pool_stride)
 {
+    int num_channels_first_conv = 1; // num channels in mnist images
+    Conv_Layer conv_first(num_filters, filter_dim, num_channels_first_conv, conv_stride, IMAGE_DIM);
+    int num_channels_last_conv = num_filters; // output of first conv layer will have num_filters channels
+    int input_dim_last_conv = conv_first.get_out_dim();
+    Conv_Layer conv_last(num_filters, filter_dim, num_channels_last_conv, conv_stride, input_dim_last_conv);
+    vector<Conv_Layer> conv_layers(2);
+    conv_layers[0] = conv_first;
+    conv_layers[1] = conv_last;
 
+    int conv_last_dim = conv_last.get_out_dim();
+    int pool_output_dim = maxpool_layer.get_out_dim(conv_last_dim);
+    int flattened_dim = num_filters * pool_output_dim * pool_output_dim;
+    Dense_Layer dense_first(flattened_dim, dense_first_out_dim);
+    Dense_Layer dense_last(dense_first_out_dim, NUM_LABELS);
+    vector<Dense_Layer> dense_layers(2);
+    dense_layers[0] = dense_first;
+    dense_layers[1] = dense_last;
 }
 
-void Model::backprop(vector<double> &probs, vector<int> &labels_one_hot)
+vector<float> Model::forward(array3D<float> &image, vector<uint8_t> &label_one_hot) {
+    array3D<float> conv_out_first = conv_layers[0].forward(image);
+    relu(conv_out_first);
+    array3D<float> conv_out_second = conv_layers[1].forward(conv_out_first);
+    relu(conv_out_second);
+    array3D<float> pool_out = maxpool_layer.forward(conv_out_second);
+    vector<float> flattened = flatten(pool_out);
+    vector<float> dense_out_first = dense_layers[0].forward(flattened);
+    relu(dense_out_first);
+    vector<float> final_out = dense_layers[1].forward(dense_out_first);
+    return final_out;
+}
+
+void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot)
 {
     // one image at a time
     // 2 dense layers dense_first and dense_last
@@ -13,7 +42,7 @@ void Model::backprop(vector<double> &probs, vector<int> &labels_one_hot)
 
     // first step is to subtract probability vector for one hot label vector, this gives dout or dL/dout
     // perfect prediction on all classes will be dout = 0
-    vector<double> dout(probs.size());
+    vector<float> dout(probs.size());
     for (int i = 0; i < probs.size(); i++)
         dout[i] = probs[i] - labels_one_hot[i];
 
@@ -21,7 +50,7 @@ void Model::backprop(vector<double> &probs, vector<int> &labels_one_hot)
     // w_last * z + b_last = out, out is probability vector
     // dL/dW_last = dL/dout * dout/dW_last, this is a matrix
     Dense_Layer dense_last = dense_layers[1];
-    vector<double> dz = dense_last.backward(dout);
+    vector<float> dz = dense_last.backward(dout);
 
     // dL/db_last = dL/dout * dout/db_last = dL/dout
     // dout/db_last = 1, local gradient of addition operator wrt to val or bias (out = val + bias) is 1
@@ -45,36 +74,44 @@ void Model::backprop(vector<double> &probs, vector<int> &labels_one_hot)
     // dL/dz * dz/dfc = dL/dfc
     // w_first^T * dz = dL/dfc
     Dense_Layer dense_first = dense_layers[0];
-    vector<double> dfc = dense_first.backward(dz);
+    vector<float> dfc = dense_first.backward(dz);
 
     // now reshape dfc (unflatten) to match dimension of max pooling output
     int conv_last_dim = conv_layers[1].get_out_dim();
-    int pool_output_dim = ((conv_last_dim - pool_dim) / pool_stride) + 1;
-    array3D<double> d_pool = unflatten(dfc, num_filters, pool_output_dim);
+    int pool_output_dim = maxpool_layer.get_out_dim(conv_last_dim);
+    array3D<float> d_pool = unflatten(dfc, num_filters, pool_output_dim);
 
     // pass this to max_pool.backward() to get dconv2
-    array3D<double> dconv2 = maxpool_layer.backward(d_pool);
+    array3D<float> dconv2 = maxpool_layer.backward(d_pool);
 
     // now run relu(dconv2)
     relu(dconv2);
 
     // run conv.backward(dconv2) = dconv1
     Conv_Layer conv_last = conv_layers[1];
-    array3D<double> dconv1 = conv_last.backward(dconv2);
+    array3D<float> dconv1 = conv_last.backward(dconv2);
 
     // run relu(dconv1)
     relu(dconv1);
 
     // run conv.backward(dconv1) = dimage
     Conv_Layer conv_first = conv_layers[0];
-    array3D<double> dimage = conv_first.backward(dconv1);
+    array3D<float> dimage = conv_first.backward(dconv1);
 
     // now pass all gradients to adam optimizer
 }
 
-array3D<double> unflatten(vector<double> &vec, int num_filters, int pool_output_dim)
+vector<Dense_Layer> Model::get_dense_layers() {
+    return dense_layers;
+}
+
+vector<Conv_Layer> Model::get_conv_layers() {
+    return conv_layers;
+}
+
+array3D<float> unflatten(vector<float> &vec, int num_filters, int pool_output_dim)
 {
-    vector<vector<vector<double>>> d_pool(num_filters, vector<vector<double>>(pool_output_dim, vector<double>(pool_output_dim)));
+    vector<vector<vector<float>>> d_pool(num_filters, vector<vector<float>>(pool_output_dim, vector<float>(pool_output_dim)));
     int row = 0, col = 0, channel = 0, channel_offset = 0;
     for (int i = 0; i < vec.size(); i++)
     {
@@ -87,13 +124,13 @@ array3D<double> unflatten(vector<double> &vec, int num_filters, int pool_output_
     return d_pool;
 }
 
-vector<double> flatten(array3D<double> &image)
+vector<float> flatten(array3D<float> &image)
 {
     int rows = image[0].size();
     int cols = image[0][0].size();
     int channels = image.size();
     int flattened_dim = channels * rows * cols;
-    vector<double> flattened(flattened_dim);
+    vector<float> flattened(flattened_dim);
     for (int n = 0; n < channels; n++)
     {
         for (int i = 0; i < rows; i++)
@@ -110,41 +147,41 @@ vector<double> flatten(array3D<double> &image)
     return flattened;
 }
 
-void relu(vector<double> &in)
+void relu(vector<float> &in)
 {
-    for (double &p : in)
+    for (float &p : in)
         if (p < 0)
             p = 0;
 }
 
-void relu(array3D<double> &in)
+void relu(array3D<float> &in)
 {
-    for (vector<vector<double>> &channel : in)
-        for (vector<double> &row : channel)
-            for (double &val : row)
+    for (vector<vector<float>> &channel : in)
+        for (vector<float> &row : channel)
+            for (float &val : row)
                 if (val < 0)
                     val = 0;
 }
 
-void softmax(vector<double> &in)
+void softmax(vector<float> &in)
 {
-    double sum = 0;
-    for (double &p : in)
+    float sum = 0;
+    for (float &p : in)
     {
         exp(p);
         sum += p;
     }
-    for (double &p : in)
+    for (float &p : in)
         p /= sum;
 }
 
-double cat_cross_entropy(vector<double> &pred_probs, vector<double> &true_labels)
+float cat_cross_entropy(vector<float> &pred_probs, vector<uint8_t> &true_labels)
 {
     int i, tmp = 0;
-    double sum = 0;
-    for (double p : pred_probs)
+    float sum = 0;
+    for (float p : pred_probs)
     {
-        double l = true_labels[i];
+        float l = true_labels[i];
         tmp = l * log(p);
         sum += tmp;
         i++;
@@ -160,14 +197,14 @@ array2D<int> rotate_180(array2D<int> filter)
     return filter;
 }
 
-array2D<double> transpose(array2D<double> w)
+array2D<float> transpose(array2D<float> w)
 {
     int num_rows = w.size();
     int num_cols = w[0].size();
-    vector<vector<double>> t(num_cols, vector<double>(num_rows));
+    vector<vector<float>> t(num_cols, vector<float>(num_rows));
     for (int i = 0; i < num_rows; i++)
     {
-        vector<double> row = w[i];
+        vector<float> row = w[i];
         for (int j = 0; j < num_cols; j++)
         {
             t[j][i] = w[i][j];
@@ -176,15 +213,16 @@ array2D<double> transpose(array2D<double> w)
     return t;
 }
 
-vector<double> dot_product(array2D<double> &w, vector<double> &x)
+vector<float> dot_product(array2D<float> &w, vector<float> &x)
 {
     int rows = w.size();
     int cols = x.size();
-    vector<double> product(rows);
+    assert(w[0].size() == x.size());
+    vector<float> product(rows);
     int tmp = 0;
     for (int i = 0; i < rows; i++)
     {
-        double out_value = 0;
+        float out_value = 0;
         for (int j = 0; j < cols; j++)
         {
             tmp = w[i][j] * x[j];

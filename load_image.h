@@ -1,7 +1,8 @@
 #include <string>
 #include <iostream>
 #include <fstream>
-#include <vector>
+#include <cmath>
+#include "shared.h"
 
 typedef unsigned char uchar;
 using std::string;
@@ -10,10 +11,7 @@ using std::ios;
 using std::runtime_error;
 using std::cout;
 using std::endl;
-using std::vector;
+using std::sqrt;
 
-template<typename T>
-using array2D = vector<vector<T> >;
-
-template<typename T>
-using array3D = vector<vector<vector<T> > >;
+array3D<float> get_training_images();
+vector<uint8_t> get_training_labels();

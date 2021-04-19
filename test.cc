@@ -240,7 +240,7 @@ void print_filter(array2D<int> filter) {
     cout << endl;
 }
 
-void conv_back(array3D<int> dprev, array4D<int> filters, array3D<int> image, int stride, array3D<int> &df, array3D<int> &dx)
+void conv_back(array3D<int> dprev, array4D<int> filters, array3D<int> image, int stride, array3D<int> &df, array3D<int> &dx, vector<int> &dB)
 {
     int num_filters = filters.size();
     int filter_dim = filters[0][0].size();
@@ -401,11 +401,14 @@ void conv_back(array3D<int> dprev, array4D<int> filters, array3D<int> image, int
                 print_matrix(dx[n]);
                 cout << endl;
                 cout << endl;
-            }
-
-            //cout << "Printing filter " << f << endl;
-            //print_matrices_dx(curr_f, dprev[f], dx[n], out_dim_x);
+            }            
         } // end for channels
+        array2D<int> dprev_channel = dprev[f];
+        int dprev_sum = 0;
+        for (int ii = 0; ii < dprev_dim; ii++)
+            for (int jj = 0; jj < dprev_dim; jj++)
+                dprev_sum += dprev_channel[ii][jj];
+        dB[f] = dprev_sum;
     } // end for filters
 }
 
@@ -600,8 +603,9 @@ void test_conv_bp()
     assert(out_dim_x == IMAGE_DIM);
     vector<vector<vector<int> > > dx(num_channels, vector<vector<int> >(out_dim_x, vector<int>(out_dim_x)));
 
+    vector<int> dB(num_filters, 0);
     cout << "back conv image " << endl;
-    conv_back(dprev, filters, image, 1, df, dx);
+    conv_back(dprev, filters, image, 1, df, dx, dB);
 }
 
 // pixels range from 0-255
@@ -807,9 +811,9 @@ void test_maxpool_back() {
 
 int main()
 {
-    test_maxpool_back();
+    //test_maxpool_back();
     //test_maxpool();
     //test_load_images();
-    //test_conv_bp();
+    test_conv_bp();
     //test_conv();
 }
