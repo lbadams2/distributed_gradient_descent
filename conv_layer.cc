@@ -4,9 +4,8 @@ Conv_Layer::Conv_Layer(int nf, int filter_dim, int num_channels, int stride, int
 {
     // filters initialized using standard normal, bias initialized all zeroes
     vector<vector<vector<vector<float> > > > filters(num_filters, vector<vector<vector<float> > >(num_channels, vector<vector<float> >(filter_dim, vector<float>(filter_dim))));
-    vector<vector<vector<float>>> filters(num_filters, vector<vector<float>>(filter_dim, vector<float>(filter_dim)));
     float stddev = 1 / sqrt(filter_dim * filter_dim);
-    normal_dist = normal_distribution<float> distribution(0, stddev);
+    normal_distribution<float> normal_dist = normal_distribution<float>(0, stddev);
     default_random_engine generator;
     for (int i = 0; i < num_filters; i++)
     {
@@ -26,10 +25,12 @@ Conv_Layer::Conv_Layer(int nf, int filter_dim, int num_channels, int stride, int
     vector<float> bias(num_filters, 0); // 1 bias per filter
 }
 
+Conv_Layer::Conv_Layer(){}
+
 // dprev is gradient of loss function from one node forward (we're moving backwards here)
 // do forward and backward pass for each image, calculate gradient for each image
 // collect them all in each batch and then update weights and biases at the end of the batch
-array3D<float> Conv_Layer::backward(array3D<float> &dprev)
+array3D<float> Conv_Layer::backward(array3D<float> &dprev, bool reset_grads)
 {
     int dprev_dim = dprev[0].size();
     // should be num_filters channels in dprev
@@ -37,11 +38,13 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev)
     int out_dim_x = dprev_dim + filter_dim - 1;                    // should be out_dim of previous layer relative to forward direction
     assert(out_dim_x == image_dim);
 
-    // this should have same dimensions as input
-    // these are created fresh for each image and summed over a batch in training loop
+    // this should have same dimensions as input, this is not summed, fresh everytime
     vector<vector<vector<float> > > dx(num_channels, vector<vector<float>>(out_dim_x, vector<float>(out_dim_x, 0)));
-    vector<vector<vector<float> > > df(num_filters, vector<vector<float>>(filter_dim, vector<float>(filter_dim, 0)));
-    vector<float> dB(num_filters, 0); // 1 bias per filter
+
+    if(reset_grads) {        
+        vector<vector<vector<float> > > df(num_filters, vector<vector<float>>(filter_dim, vector<float>(filter_dim, 0)));
+        vector<float> dB(num_filters, 0); // 1 bias per filter
+    }
 
     for (int f = 0; f < num_filters; f++)
     {
@@ -67,7 +70,7 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev)
                             sum += prod;
                         }
                     }
-                    df[f][out_y][out_x] += sum; // += if multiple channels in image, = if 1 channel
+                    df[f][out_y][out_x] += sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
                     curr_x += stride;
                     out_x++;
                 }
@@ -146,7 +149,7 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev)
         for (int ii = 0; ii < dprev_dim; ii++)
             for (int jj = 0; jj < dprev_dim; jj++)
                 dprev_sum += dprev_channel[ii][jj];
-        dB[f] = dprev_sum;
+        dB[f] += dprev_sum;
     }
     return dx;
 }
@@ -193,10 +196,10 @@ int Conv_Layer::get_out_dim()
     return out_dim;
 }
 
-array3D<float> Conv_Layer::get_dF() {
+array3D<float>& Conv_Layer::get_dF() {
     return df;
 }
 
-vector<float> Conv_Layer::get_dB() {
+vector<float>& Conv_Layer::get_dB() {
     return dB;
 }

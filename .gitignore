@@ -4,5 +4,6 @@ data
 *.out
 load_image
 .vscode
-test
+train
+unit_tests
 *.dSYM

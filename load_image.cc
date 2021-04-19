@@ -68,7 +68,7 @@ uchar* read_mnist_labels(string full_path, int& number_of_labels) {
 }
 
 array3D<uint8_t> convert_to_2d(uchar** images, int image_size, int num_images, int &image_dim, int &sum) {
-    int image_dim = (int)sqrt(image_size);
+    image_dim = (int)sqrt(image_size);
     vector<vector<vector<uint8_t> > > square_images(num_images, vector<vector<uint8_t> >(image_dim, vector<uint8_t>(image_dim)));
     for(int n = 0; n < num_images; n++) {
         vector<vector<uint8_t> > image_vec(image_dim, vector<uint8_t>(image_dim));

@@ -34,7 +34,7 @@ vector<float> Model::forward(array3D<float> &image, vector<uint8_t> &label_one_h
     return final_out;
 }
 
-void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot)
+void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool reset_grads)
 {
     // one image at a time
     // 2 dense layers dense_first and dense_last
@@ -50,7 +50,7 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot)
     // w_last * z + b_last = out, out is probability vector
     // dL/dW_last = dL/dout * dout/dW_last, this is a matrix
     Dense_Layer dense_last = dense_layers[1];
-    vector<float> dz = dense_last.backward(dout);
+    vector<float> dz = dense_last.backward(dout, reset_grads);
 
     // dL/db_last = dL/dout * dout/db_last = dL/dout
     // dout/db_last = 1, local gradient of addition operator wrt to val or bias (out = val + bias) is 1
@@ -74,7 +74,7 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot)
     // dL/dz * dz/dfc = dL/dfc
     // w_first^T * dz = dL/dfc
     Dense_Layer dense_first = dense_layers[0];
-    vector<float> dfc = dense_first.backward(dz);
+    vector<float> dfc = dense_first.backward(dz, reset_grads);
 
     // now reshape dfc (unflatten) to match dimension of max pooling output
     int conv_last_dim = conv_layers[1].get_out_dim();
@@ -89,14 +89,14 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot)
 
     // run conv.backward(dconv2) = dconv1
     Conv_Layer conv_last = conv_layers[1];
-    array3D<float> dconv1 = conv_last.backward(dconv2);
+    array3D<float> dconv1 = conv_last.backward(dconv2, reset_grads);
 
     // run relu(dconv1)
     relu(dconv1);
 
     // run conv.backward(dconv1) = dimage
     Conv_Layer conv_first = conv_layers[0];
-    array3D<float> dimage = conv_first.backward(dconv1);
+    array3D<float> dimage = conv_first.backward(dconv1, reset_grads);
 
     // now pass all gradients to adam optimizer
 }
@@ -189,7 +189,7 @@ float cat_cross_entropy(vector<float> &pred_probs, vector<uint8_t> &true_labels)
     return -sum;
 }
 
-array2D<int> rotate_180(array2D<int> filter)
+array2D<float> rotate_180(array2D<float> filter)
 {
     reverse(begin(filter), end(filter)); // reverse rows
     for_each(begin(filter), end(filter),
@@ -197,7 +197,7 @@ array2D<int> rotate_180(array2D<int> filter)
     return filter;
 }
 
-array2D<float> transpose(array2D<float> w)
+array2D<float> transpose(array2D<float> &w)
 {
     int num_rows = w.size();
     int num_cols = w[0].size();
@@ -232,4 +232,70 @@ vector<float> dot_product(array2D<float> &w, vector<float> &x)
     }
 
     return product;
+}
+
+void adam(vector<Conv_Layer> &conv_layers, vector<Dense_Layer> &dense_layers, float learning_rate, float beta1, float beta2, int batch_size) {
+    // update dF and dB in both conv layers
+    array3D<float> conv_first_dF = conv_layers[0].get_dF();
+    array3D<float> conv_second_dF = conv_layers[1].get_dF();
+    vector<float> conv_first_dB = conv_layers[0].get_dB();
+    vector<float> conv_second_dB = conv_layers[1].get_dB();
+    int num_filters = conv_first_dF.size();
+    int filter_dim = conv_first_dF[0].size();
+    float v1 = 0, s1 = 0, v2 = 0, s2 = 0, bv1 = 0, bs1 = 0, bv2 = 0, bs2 = 0;
+    float epsilon = .0000001; // to prevent division by zero
+    for(int f = 0; f < num_filters; f++) {
+        bv1 =  (1 - beta1) * conv_first_dB[f] / batch_size;
+        bs1 = (1 - beta2) / pow(conv_first_dB[f] / batch_size, 2);
+        conv_first_dB[f] -= learning_rate * bv1/sqrt(bs1 + epsilon);
+
+        bv2 =  (1 - beta1) * conv_second_dB[f] / batch_size;
+        bs2 = (1 - beta2) / pow(conv_second_dB[f] / batch_size, 2);
+        conv_second_dB[f] -= learning_rate * bv2/sqrt(bs2 + epsilon);
+        for(int i = 0; i < filter_dim; i++) {
+            for(int j = 0; j < filter_dim; j++) {
+                v1 =  (1 - beta1) * conv_first_dF[f][i][j] / batch_size;
+                s1 = (1 - beta2) / pow(conv_first_dF[f][i][j] / batch_size, 2);
+                conv_first_dF[f][i][j] -= learning_rate * v1/sqrt(s1 + epsilon);
+
+                v2 =  (1 - beta1) * conv_second_dF[f][i][j] / batch_size;
+                s2 = (1 - beta2) / pow(conv_second_dF[f][i][j] / batch_size, 2);
+                conv_second_dF[f][i][j] -= learning_rate * v1/sqrt(s1 + epsilon);
+            }
+        }
+    }
+
+    // update dW and dB in first dense layer
+    array2D<float> dense_first_dW = dense_layers[0].get_dW();
+    vector<float> dense_first_dB = dense_layers[0].get_dB(); // size is out_dim
+    int dense_first_out_dim = dense_first_dW.size();
+    int dense_first_in_dim = dense_first_dW[0].size();
+    float v3 = 0, s3 = 0, bv3 = 0, bs3 = 0;
+    for(int i = 0; i < dense_first_out_dim; i++) {
+        bv3 =  (1 - beta1) * dense_first_dB[i] / batch_size;
+        bs3 = (1 - beta2) / pow(dense_first_dB[i] / batch_size, 2);
+        dense_first_dB[i] -= learning_rate * bv3/sqrt(bs3 + epsilon);
+        for(int j = 0; j < dense_first_in_dim; j++) {
+            v3 =  (1 - beta1) * dense_first_dW[i][j] / batch_size;
+            s3 = (1 - beta2) / pow(dense_first_dW[i][j] / batch_size, 2);
+            dense_first_dW[i][j] -= learning_rate * v3/sqrt(s3 + epsilon);
+        }
+    }
+
+    // update dW and dB in second dense layer
+    array2D<float> dense_second_dW = dense_layers[1].get_dW();
+    vector<float> dense_second_dB = dense_layers[1].get_dB(); // size is out_dim
+    int out_dim = dense_second_dW.size();
+    int in_dim = dense_second_dW[0].size();
+    float v4 = 0, s4 = 0, bv4 = 0, bs4 = 0;
+    for(int i = 0; i < NUM_LABELS; i++) {
+        bv3 =  (1 - beta1) * dense_second_dB[i] / batch_size;
+        bs3 = (1 - beta2) / pow(dense_second_dB[i] / batch_size, 2);
+        dense_second_dB[i] -= learning_rate * bv3/sqrt(bs3 + epsilon);
+        for(int j = 0; j < dense_first_out_dim; j++) {
+            v3 =  (1 - beta1) * dense_second_dW[i][j] / batch_size;
+            s3 = (1 - beta2) / pow(dense_second_dW[i][j] / batch_size, 2);
+            dense_second_dW[i][j] -= learning_rate * v3/sqrt(s3 + epsilon);
+        }
+    }    
 }

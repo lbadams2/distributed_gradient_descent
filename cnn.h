@@ -21,15 +21,17 @@ using std::vector;
 using std::end;
 using std::begin;
 using std::for_each;
+using std::pow;
 
 class Conv_Layer {
 public:
     Conv_Layer(int num_filters, int filter_dim, int num_channels, int stride, int image_dim);
+    Conv_Layer(); // for vector init
     array3D<float> forward(array3D<float> &image);
-    array3D<float> backward(array3D<float> &dprev);
+    array3D<float> backward(array3D<float> &dprev, bool reset_grads);
     int get_out_dim();
-    array3D<float> get_dF();
-    vector<float> get_dB();
+    array3D<float>& get_dF();
+    vector<float>& get_dB();
 private:
     array4D<float> filters;
     vector<float> bias;
@@ -39,7 +41,6 @@ private:
     int filter_dim;
     int image_dim;
     int out_dim;
-    normal_distribution normal_dist;
     array3D<float> image; // save this for back prop
     array3D<float> df;
     vector<float> dB;
@@ -48,11 +49,12 @@ private:
 class Dense_Layer {
 public:
     Dense_Layer(int in_dim, int out_dim);
+    Dense_Layer(); // for vector init
     vector<float> forward(vector<float> &in);
-    vector<float> backward(vector<float> &dprev);
+    vector<float> backward(vector<float> &dprev, bool reset_grads);
     int get_in_dim();
-    array2D<float> get_dW();
-    vector<float> get_dB();
+    array2D<float>& get_dW();
+    vector<float>& get_dB();
 private:
     array2D<float> weights;
     array2D<float> weights_T; // update this after each mini batch, after adam is run
@@ -62,7 +64,6 @@ private:
     vector<float> orig_in; // save this for back prop
     int in_dim;
     int out_dim;
-    normal_distribution normal_dist;
 };
 
 class MaxPool_Layer {
@@ -81,7 +82,7 @@ private:
 class Model {
 public:
     Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride, int dense_first_out_dim);
-    void backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot);
+    void backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool reset_grads);
     vector<float> forward(array3D<float> &image, vector<uint8_t> &label_one_hot);
     vector<Dense_Layer> get_dense_layers();
     vector<Conv_Layer> get_conv_layers();
@@ -103,9 +104,9 @@ void relu(vector<float> &in);
 void relu(array3D<float> &in);
 void softmax(vector<float> &in);
 float cat_cross_entropy(vector<float> &pred_probs, vector<uint8_t> &true_labels);
-array2D<float> rotate_180(array2D<float> &filter);
+array2D<float> rotate_180(array2D<float> filter);
 array2D<float> transpose(array2D<float> &w);
 vector<float> dot_product(array2D<float> &w, vector<float> &x);
-void adam(float learning_rate, float beta1, float beta2, );
+void adam(vector<Conv_Layer> &conv_layers, vector<Dense_Layer> &dense_layers, float learning_rate, float beta1, float beta2, int batch_size);
 
 #endif
