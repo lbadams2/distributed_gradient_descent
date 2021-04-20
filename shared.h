@@ -2,9 +2,12 @@
 #define shared_h
 
 #include <vector>
+#include <iostream>
 #include <assert.h>
 
 using std::vector;
+using std::cout;
+using std::endl;
 
 #define IMAGE_DIM 28
 #define NUM_LABELS 10

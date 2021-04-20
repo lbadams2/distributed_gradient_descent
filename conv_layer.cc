@@ -20,9 +20,16 @@ Conv_Layer::Conv_Layer(int nf, int filter_dim, int num_channels, int stride, int
             }
         }
     }
+    this->filters = filters;
 
     out_dim = floor(((image_dim - filter_dim) / stride) + 1);
     vector<float> bias(num_filters, 0); // 1 bias per filter
+    this->bias = bias;
+
+    vector<vector<vector<float> > > df(num_filters, vector<vector<float>>(filter_dim, vector<float>(filter_dim, 0)));
+    this->df = df;
+    vector<float> dB(num_filters, 0); // 1 bias per filter
+    this->dB = dB;
 }
 
 Conv_Layer::Conv_Layer(){}
@@ -41,10 +48,14 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev, bool reset_grads)
     // this should have same dimensions as input, this is not summed, fresh everytime
     vector<vector<vector<float> > > dx(num_channels, vector<vector<float>>(out_dim_x, vector<float>(out_dim_x, 0)));
 
+    /*
     if(reset_grads) {        
         vector<vector<vector<float> > > df(num_filters, vector<vector<float>>(filter_dim, vector<float>(filter_dim, 0)));
+        this->df = df;
         vector<float> dB(num_filters, 0); // 1 bias per filter
+        this->dB = dB;
     }
+    */
 
     for (int f = 0; f < num_filters; f++)
     {
@@ -70,7 +81,10 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev, bool reset_grads)
                             sum += prod;
                         }
                     }
-                    df[f][out_y][out_x] += sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
+                    if(reset_grads && n == 0)
+                        df[f][out_y][out_x] = sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
+                    else
+                        df[f][out_y][out_x] += sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
                     curr_x += stride;
                     out_x++;
                 }
@@ -149,7 +163,10 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev, bool reset_grads)
         for (int ii = 0; ii < dprev_dim; ii++)
             for (int jj = 0; jj < dprev_dim; jj++)
                 dprev_sum += dprev_channel[ii][jj];
-        dB[f] += dprev_sum;
+        if(reset_grads)
+            dB[f] = dprev_sum;
+        else
+            dB[f] += dprev_sum;
     }
     return dx;
 }
@@ -157,6 +174,7 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev, bool reset_grads)
 // use std::array if size is fixed at compile time, vector if not
 array3D<float> Conv_Layer::forward(array3D<float> &image)
 {
+    this->image = image;
     vector<vector<vector<float>>> out(num_filters, vector<vector<float>>(out_dim, vector<float>(out_dim, 0)));
     for (int f = 0; f < num_filters; f++)
     {

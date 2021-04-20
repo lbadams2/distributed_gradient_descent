@@ -7,16 +7,23 @@ Dense_Layer::Dense_Layer(int in_dim, int out_dim) : in_dim(in_dim), out_dim(out_
     vector<vector<float>> weights(out_dim, vector<float>(in_dim));
     normal_distribution<float> normal_dist = normal_distribution<float>(0, 1);
     default_random_engine generator;
-    for (int i = 0; i < in_dim; i++)
+    for (int i = 0; i < out_dim; i++)
     {
-        for (int j = 0; j < out_dim; j++)
+        for (int j = 0; j < in_dim; j++)
         {
             float init_val = normal_dist(generator);
             weights[i][j] = init_val * .01;
         }
     }
-    weights_T = transpose(weights);
+    this->weights = weights;
+    this->weights_T = transpose(weights);
     vector<float> bias(out_dim, 0);
+    this->bias = bias;
+
+    vector<vector<float> > dW(out_dim, vector<float>(in_dim, 0));
+    this->dW = dW;
+    vector<float> dB(out_dim, 0);
+    this->dB = dB;
 }
 
 Dense_Layer::Dense_Layer(){}
@@ -27,7 +34,8 @@ vector<float> Dense_Layer::forward(vector<float> &in)
     for(int i = 0; i < f.size(); i++)
         f[i] += bias[i];
     //relu(product);
-    orig_in = f; // save this for back propagation
+    //orig_in = f; // save this for back propagation
+    this->orig_in = in;
     return f;
 }
 
@@ -36,22 +44,32 @@ vector<float> Dense_Layer::forward(vector<float> &in)
 // vectors are row vectors
 vector<float> Dense_Layer::backward(vector<float> &dprev, bool reset_grads)
 {
+    /*
     if(reset_grads) {
         // dW should have same dims as weights
         vector<vector<float> > dW(out_dim, vector<float>(in_dim, 0));
+        this->dW = dW;
         vector<float> dB(out_dim, 0);
+        this->dB = dB;
     }
+    */
     
     // dW is outer product of dprev and orig_in to get matrix
     for(int i  = 0; i < dprev.size(); i++) {
         for(int j = 0; j < orig_in.size(); j++) {
-            dW[i][j] += dprev[i] * orig_in[j];
+            if(reset_grads)
+                dW[i][j] = dprev[i] * orig_in[j];
+            else
+                dW[i][j] += dprev[i] * orig_in[j];
         }
     }
 
     // dB is sum of dprev along cols, which i think is just dprev, dL/dprev * dprev/dB, prev = wx + b so dprev/dB = 1    
     for(int i = 0; i < dprev.size(); i++)
-        dB[i] += dprev[i];
+        if(reset_grads)
+            dB[i] = dprev[i];
+        else
+            dB[i] += dprev[i];
 
     // d_orig_in is weights^T * dprev, this isn't summed over the batch
     vector<float> d_orig_in = dot_product(weights_T, dprev);

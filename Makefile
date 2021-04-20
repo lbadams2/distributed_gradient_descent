@@ -21,5 +21,8 @@ conv_layer.o: cnn.h conv_layer.cc
 load_image.o: load_image.h load_image.cc
 	g++ -std=c++17 -g -c load_image.cc
 
+unit_tests: unit_tests.cc
+	g++ -std=c++17 -g -o unit_tests unit_tests.cc
+
 clean:
 	rm *.o train

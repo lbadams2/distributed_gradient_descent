@@ -1,6 +1,6 @@
 #include "cnn.h"
 
-Model::Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride, int dense_first_out_dim) : filter_dim(filter_dim), pool_dim(pool_dim), pool_stride(pool_stride), conv_stride(conv_stride), dense_first_out_dim(dense_first_out_dim), maxpool_layer(pool_dim, pool_stride)
+Model::Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride, int dense_first_out_dim) : filter_dim(filter_dim), pool_dim(pool_dim), num_filters(num_filters), pool_stride(pool_stride), conv_stride(conv_stride), dense_first_out_dim(dense_first_out_dim), maxpool_layer(pool_dim, pool_stride)
 {
     int num_channels_first_conv = 1; // num channels in mnist images
     Conv_Layer conv_first(num_filters, filter_dim, num_channels_first_conv, conv_stride, IMAGE_DIM);
@@ -10,6 +10,7 @@ Model::Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int
     vector<Conv_Layer> conv_layers(2);
     conv_layers[0] = conv_first;
     conv_layers[1] = conv_last;
+    this->conv_layers = conv_layers;
 
     int conv_last_dim = conv_last.get_out_dim();
     int pool_output_dim = maxpool_layer.get_out_dim(conv_last_dim);
@@ -19,6 +20,7 @@ Model::Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int
     vector<Dense_Layer> dense_layers(2);
     dense_layers[0] = dense_first;
     dense_layers[1] = dense_last;
+    this->dense_layers = dense_layers;
 }
 
 vector<float> Model::forward(array3D<float> &image, vector<uint8_t> &label_one_hot) {
@@ -101,11 +103,11 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool
     // now pass all gradients to adam optimizer
 }
 
-vector<Dense_Layer> Model::get_dense_layers() {
+vector<Dense_Layer>& Model::get_dense_layers() {
     return dense_layers;
 }
 
-vector<Conv_Layer> Model::get_conv_layers() {
+vector<Conv_Layer>& Model::get_conv_layers() {
     return conv_layers;
 }
 

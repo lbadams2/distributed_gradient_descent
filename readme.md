@@ -1,1 +1,1 @@
-clang++ $(pkg-config --cflags --libs /usr/local/Cellar/opencv/4.5.2/lib/pkgconfig/opencv4.pc) -std=c++17  test.cc -o test
+clang++ $(pkg-config --cflags --libs /usr/local/Cellar/opencv/4.5.2/lib/pkgconfig/opencv4.pc) -std=c++17  unit_tests.cc -o unit_tests

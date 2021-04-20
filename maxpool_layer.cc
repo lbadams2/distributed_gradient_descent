@@ -8,6 +8,7 @@ array3D<float> MaxPool_Layer::forward(array3D<float> &image) {
     int num_channels = image.size();
     int orig_dim = image[0].size();
     int new_dim = ((orig_dim - kernel_size) / stride) + 1;
+    this->orig_image = image;
     vector<vector<vector<float> > > downsampled(num_channels, vector<vector<float> >(new_dim, vector<float>(new_dim)));
     for(int n = 0; n < num_channels; n++) {
         int curr_y = 0, out_y = 0;

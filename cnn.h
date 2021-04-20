@@ -84,8 +84,8 @@ public:
     Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride, int dense_first_out_dim);
     void backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool reset_grads);
     vector<float> forward(array3D<float> &image, vector<uint8_t> &label_one_hot);
-    vector<Dense_Layer> get_dense_layers();
-    vector<Conv_Layer> get_conv_layers();
+    vector<Dense_Layer>& get_dense_layers();
+    vector<Conv_Layer>& get_conv_layers();
 private:
     vector<Dense_Layer> dense_layers;
     vector<Conv_Layer> conv_layers;
