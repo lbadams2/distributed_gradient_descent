@@ -49,7 +49,7 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev, bool reset_grads)
     vector<vector<vector<float> > > dx(num_channels, vector<vector<float>>(out_dim_x, vector<float>(out_dim_x, 0)));
 
     /*
-    if(reset_grads) {        
+    if(reset_grads) {
         vector<vector<vector<float> > > df(num_filters, vector<vector<float>>(filter_dim, vector<float>(filter_dim, 0)));
         this->df = df;
         vector<float> dB(num_filters, 0); // 1 bias per filter
@@ -179,7 +179,7 @@ array3D<float> Conv_Layer::forward(array3D<float> &image)
     for (int f = 0; f < num_filters; f++)
     {
         for (int n = 0; n < num_channels; n++)
-        {        
+        {
             int curr_y = 0, out_y = 0;
             while (curr_y + filter_dim <= image_dim)
             {
@@ -202,7 +202,7 @@ array3D<float> Conv_Layer::forward(array3D<float> &image)
                     out_x++;
                 }
                 curr_y += stride;
-                out_y++;                
+                out_y++;
             }
         }
     }

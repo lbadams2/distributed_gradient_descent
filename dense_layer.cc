@@ -64,7 +64,7 @@ vector<float> Dense_Layer::backward(vector<float> &dprev, bool reset_grads)
         }
     }
 
-    // dB is sum of dprev along cols, which i think is just dprev, dL/dprev * dprev/dB, prev = wx + b so dprev/dB = 1    
+    // dB is sum of dprev along cols, which i think is just dprev, dL/dprev * dprev/dB, prev = wx + b so dprev/dB = 1
     for(int i = 0; i < dprev.size(); i++)
         if(reset_grads)
             dB[i] = dprev[i];

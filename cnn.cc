@@ -179,7 +179,7 @@ void softmax(vector<float> &in)
 
 float cat_cross_entropy(vector<float> &pred_probs, vector<uint8_t> &true_labels)
 {
-    int i, tmp = 0;
+    int i = 0, tmp = 0;
     float sum = 0;
     for (float p : pred_probs)
     {
@@ -299,5 +299,5 @@ void adam(vector<Conv_Layer> &conv_layers, vector<Dense_Layer> &dense_layers, fl
             s3 = (1 - beta2) / pow(dense_second_dW[i][j] / batch_size, 2);
             dense_second_dW[i][j] -= learning_rate * v3/sqrt(s3 + epsilon);
         }
-    }    
+    }
 }
