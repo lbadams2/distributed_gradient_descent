@@ -1,4 +1,4 @@
-//#include "opencv2/highgui.hpp"
+#include "opencv2/highgui.hpp"
 #include <vector>
 #include <array>
 #include <random>
@@ -32,6 +32,9 @@ using array3D = vector<vector<vector<T> > >;
 
 template<typename T>
 using array4D = vector<vector<vector<vector<T> > > >;
+
+template<typename T>
+using array5D = vector<vector<vector<vector<vector<T> > > > >;
 
 #define NUM_CHANNELS 3
 #define IMAGE_DIM 28
@@ -692,6 +695,23 @@ array3D<uint8_t> convert_to_2d(uchar** images, int image_size, int num_images) {
     return square_images;
 }
 
+array3D<uint8_t> convert_to_2d_vec(vector<uint8_t> images, int image_size, int num_images) {
+    int image_dim = (int)sqrt(image_size);
+    vector<vector<vector<uint8_t> > > square_images(num_images, vector<vector<uint8_t> >(image_dim, vector<uint8_t>(image_dim)));
+    vector<vector<uint8_t> > image_vec(image_dim, vector<uint8_t>(image_dim));
+    for(int n = 0; n < num_images; n++) {
+        int image_index = n * image_size;
+        for(int i = 0; i < image_dim; i++) {
+            for(int j = 0; j < image_dim; j++) {
+                int pixel_index = (image_dim * i) + j;
+                int vec_index = image_index + pixel_index;
+                square_images[n][i][j] = images[vec_index];
+            }
+        }
+    }
+    return square_images;
+}
+
 vector<int> convert_labels(uchar* labels, int num_labels) {
     vector<int> label_vec(num_labels);
     for(int i = 0; i < num_labels; i++) {
@@ -700,10 +720,9 @@ vector<int> convert_labels(uchar* labels, int num_labels) {
     return label_vec;
 }
 
-/*
-void display_images(array3D<uint8_t> images) {
+void display_image(array2D<uint8_t> &image) {
     //  create grayscale image
-    array2D<uint8_t> image = images[0];
+    //array2D<uint8_t> image = images[0];
     uint8_t image_arr[28*28];
     for(int i = 0; i < 28; i++) {
         for(int j = 0; j < 28; j++) {
@@ -717,7 +736,6 @@ void display_images(array3D<uint8_t> images) {
     cv::imshow("test", imgGray);
     cv::waitKey(0);
 }
-*/
 
 /*
 // this works
@@ -744,7 +762,8 @@ void test_load_images() {
     //display_images_char(image_arr); // this works
     array3D<uint8_t> images = convert_to_2d(image_arr, image_size, number_of_images);
     cout << "number of images in vec " << images.size() << endl;
-    //display_images(images);
+    array2D<uint8_t> image = images[6547];
+    display_image(image);
     
     int num_labels = 0;
     uchar* label_arr = read_mnist_labels("/Users/liam_adams/my_repos/csc724_project/data/train-labels-idx1-ubyte", num_labels);
@@ -809,11 +828,183 @@ void test_maxpool_back() {
     print_matrix(dnext[0]);
 }
 
+void create_batches_from_vec(vector<uint8_t> &images, vector<uint8_t> &labels, array5D<uint8_t> &image_batches, array2D<uint8_t> &label_batches) {
+    int num_batches = image_batches.size();
+    int batch_size = image_batches[0].size();
+    int image_idx = 0, pixel_idx = 0, vec_idx = 0, pixel_offset = 0;
+    for(int n = 0; n < num_batches; n++) {
+        for(int b = 0; b < batch_size; b++) {
+            image_idx = (n * batch_size) + b;
+            label_batches[n][b] = labels[image_idx];
+            pixel_offset = image_idx * 784;
+            for(int i = 0; i < IMAGE_DIM; i++)
+                for(int j = 0; j < IMAGE_DIM; j++) {
+                    pixel_idx = (i * IMAGE_DIM) + j;
+                    vec_idx = pixel_offset + pixel_idx;
+                    image_batches[n][b][0][i][j] = images[vec_idx];
+                }
+        }
+    }
+    cout << "max vec idx " << vec_idx << " max image idx " << image_idx << endl;
+}
+
+void create_batches(array3D<uint8_t> &images, vector<uint8_t> &labels, array5D<uint8_t> &image_batches, array2D<uint8_t> &label_batches) {
+    int num_batches = image_batches.size();
+    int batch_size = image_batches[0].size();
+    for(int n = 0; n < num_batches; n++) {
+        for(int b = 0; b < batch_size; b++) {
+            int orig_index = (n * batch_size) + b;
+            label_batches[n][b] = labels[orig_index];
+            for(int i = 0; i < IMAGE_DIM; i++)
+                for(int j = 0; j < IMAGE_DIM; j++) {
+                    image_batches[n][b][0][i][j] = images[orig_index][i][j];
+                }
+        }
+    }
+}
+
+vector<uint8_t> read_mnist_images_vec(string full_path, int& number_of_images, int& image_size) {
+    auto reverseInt = [](int i) {
+        unsigned char c1, c2, c3, c4;
+        c1 = i & 255, c2 = (i >> 8) & 255, c3 = (i >> 16) & 255, c4 = (i >> 24) & 255;
+        return ((int)c1 << 24) + ((int)c2 << 16) + ((int)c3 << 8) + c4;
+    };
+
+    ifstream file(full_path, ios::binary);    
+
+    if(file.is_open()) {
+        int magic_number = 0, n_rows = 0, n_cols = 0;
+
+        file.read((char *)&magic_number, sizeof(magic_number));
+        magic_number = reverseInt(magic_number);
+
+        if(magic_number != 2051) throw runtime_error("Invalid MNIST image file!");
+
+        file.read((char *)&number_of_images, sizeof(number_of_images)), number_of_images = reverseInt(number_of_images);
+        file.read((char *)&n_rows, sizeof(n_rows)), n_rows = reverseInt(n_rows);
+        file.read((char *)&n_cols, sizeof(n_cols)), n_cols = reverseInt(n_cols);
+
+        image_size = n_rows * n_cols;
+        vector<uint8_t> image_vec(number_of_images * image_size);
+
+        uchar** _dataset = new uchar*[number_of_images];
+        for(int i = 0; i < number_of_images; i++) {
+            _dataset[i] = new uchar[image_size];
+            file.read((char *)_dataset[i], image_size);
+            int vec_offset = i * image_size;
+            for(int j = 0; j < image_size; j++)
+                image_vec[vec_offset + j] = _dataset[i][j];
+        }
+        return image_vec;
+    } else {
+        throw runtime_error("Cannot open file `" + full_path + "`!");
+    }
+}
+
+// first 4 bytes int id, next 4 bytes int for number of labels, sequence of unsigned bytes for each label
+vector<uint8_t> read_mnist_labels_vec(string full_path, int& number_of_labels) {
+    auto reverseInt = [](int i) {
+        unsigned char c1, c2, c3, c4;
+        c1 = i & 255, c2 = (i >> 8) & 255, c3 = (i >> 16) & 255, c4 = (i >> 24) & 255;
+        return ((int)c1 << 24) + ((int)c2 << 16) + ((int)c3 << 8) + c4;
+    };
+
+    ifstream file(full_path, ios::binary);
+
+    if(file.is_open()) {
+        int magic_number = 0;
+        file.read((char *)&magic_number, sizeof(magic_number));
+        magic_number = reverseInt(magic_number);
+
+        if(magic_number != 2049) throw runtime_error("Invalid MNIST label file!");
+
+        file.read((char *)&number_of_labels, sizeof(number_of_labels)), number_of_labels = reverseInt(number_of_labels);
+
+        vector<uint8_t> label_vec(number_of_labels);
+        uchar* _dataset = new uchar[number_of_labels];
+        for(int i = 0; i < number_of_labels; i++) {
+            file.read((char*)&_dataset[i], 1);
+            label_vec[i] = _dataset[i];
+        }
+        return label_vec;
+    } else {
+        throw runtime_error("Unable to open file `" + full_path + "`!");
+    }
+}
+
+vector<uint8_t> get_training_images() {
+    int number_of_images = 0, image_size = 0;
+    vector<uint8_t> image_arr = read_mnist_images_vec("/Users/liam_adams/my_repos/csc724_project/data/train-images-idx3-ubyte", number_of_images, image_size);
+    cout << "number of images " << number_of_images << endl;
+    cout << "image size " << image_size << endl;
+    int sum = 0, image_dim = 0;
+    float mean = 0;
+    //array3D<uint8_t> images = convert_to_2d(image_arr, image_size, number_of_images, image_dim, sum);
+    //float stddev = image_stddev(images, number_of_images, image_dim, sum, mean);
+    mean = 33.3184;
+    float stddev = 73.7704;
+    cout << "all images mean " << mean << ", all images stddev " << stddev << endl;
+    return image_arr;
+}
+
+vector<uint8_t> get_training_labels() {
+    int num_labels = 0;
+    vector<uint8_t> labels = read_mnist_labels_vec("/Users/liam_adams/my_repos/csc724_project/data/train-labels-idx1-ubyte", num_labels);
+    //vector<uint8_t> labels = convert_labels(label_arr, num_labels);
+    cout << "number of labels " << labels.size() << endl;
+    return labels;
+}
+
+void test_create_batch_from_vec() {
+    vector<uint8_t> images = get_training_images();
+    vector<uint8_t> labels = get_training_labels();
+    int batch_size = 25;
+    int num_pixels = images.size();
+    int num_images = num_pixels / 784;
+    int num_labels = labels.size();
+    int num_channels = 1;
+    assert(num_images == num_labels);
+    int num_batches = num_images / batch_size;
+    vector<vector<vector<vector<vector<uint8_t> > > > > image_batches(num_batches, vector<vector<vector<vector<uint8_t> > > >(batch_size, vector<vector<vector<uint8_t> > >(num_channels, vector<vector<uint8_t> >(IMAGE_DIM, vector<uint8_t>(IMAGE_DIM)))));
+    vector<vector<uint8_t>> label_batches(num_batches, vector<uint8_t>(batch_size));
+    create_batches_from_vec(images, labels, image_batches, label_batches);
+    array2D<uint8_t> image = image_batches[245][15][0];
+    display_image(image);
+}
+
+void test_convert_2D() {
+    vector<uint8_t> images = get_training_images();
+    int image_size = 784;
+    int num_images = images.size() / image_size;
+    array3D<uint8_t> square_images = convert_to_2d_vec(images, image_size, num_images);
+    array2D<uint8_t> image = square_images[36357];
+    display_image(image);
+}
+
+void test_create_batches() {
+    vector<uint8_t> images = get_training_images();
+    vector<uint8_t> labels = get_training_labels();
+    int image_size = 784;
+    int num_images = images.size() / image_size;
+    array3D<uint8_t> square_images = convert_to_2d_vec(images, image_size, num_images);
+    int batch_size = 25;
+    int num_batches = num_images / batch_size;
+    int num_channels = 1;
+    vector<vector<vector<vector<vector<uint8_t> > > > > image_batches(num_batches, vector<vector<vector<vector<uint8_t> > > >(batch_size, vector<vector<vector<uint8_t> > >(num_channels, vector<vector<uint8_t> >(IMAGE_DIM, vector<uint8_t>(IMAGE_DIM)))));
+    vector<vector<uint8_t>> label_batches(num_batches, vector<uint8_t>(batch_size));
+    create_batches(square_images, labels, image_batches, label_batches);
+    array2D<uint8_t> image = image_batches[500][20][0];
+    display_image(image);
+}
+
 int main()
 {
     //test_maxpool_back();
     //test_maxpool();
     //test_load_images();
-    test_conv_bp();
+    //test_conv_bp();
     //test_conv();
+    test_create_batch_from_vec();
+    //test_convert_2D();
+    //test_create_batches();
 }

@@ -11,6 +11,8 @@ using std::endl;
 
 #define IMAGE_DIM 28
 #define NUM_LABELS 10
+#define MNIST_MEAN 33.3184f
+#define MNIST_STDDEV 73.7704f
 
 template<typename T>
 using array2D = vector<vector<T> >;
