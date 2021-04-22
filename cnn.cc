@@ -33,6 +33,7 @@ vector<float> Model::forward(array3D<float> &image, vector<uint8_t> &label_one_h
     vector<float> dense_out_first = dense_layers[0].forward(flattened);
     relu(dense_out_first);
     vector<float> final_out = dense_layers[1].forward(dense_out_first);
+    softmax(final_out);
     return final_out;
 }
 
@@ -51,7 +52,7 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool
     // now dot product of dout with input to dense_last transposed, z^T gives dL/dW_last
     // w_last * z + b_last = out, out is probability vector
     // dL/dW_last = dL/dout * dout/dW_last, this is a matrix
-    Dense_Layer dense_last = dense_layers[1];
+    Dense_Layer dense_last = dense_layers.at(1);
     vector<float> dz = dense_last.backward(dout, reset_grads);
 
     // dL/db_last = dL/dout * dout/db_last = dL/dout
@@ -75,11 +76,11 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool
     // wfirst * fc + b_first = z
     // dL/dz * dz/dfc = dL/dfc
     // w_first^T * dz = dL/dfc
-    Dense_Layer dense_first = dense_layers[0];
+    Dense_Layer dense_first = dense_layers.at(0);
     vector<float> dfc = dense_first.backward(dz, reset_grads);
 
     // now reshape dfc (unflatten) to match dimension of max pooling output
-    int conv_last_dim = conv_layers[1].get_out_dim();
+    int conv_last_dim = conv_layers.at(1).get_out_dim();
     int pool_output_dim = maxpool_layer.get_out_dim(conv_last_dim);
     array3D<float> d_pool = unflatten(dfc, num_filters, pool_output_dim);
 
@@ -90,14 +91,14 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool
     relu(dconv2);
 
     // run conv.backward(dconv2) = dconv1
-    Conv_Layer conv_last = conv_layers[1];
+    Conv_Layer conv_last = conv_layers.at(1);
     array3D<float> dconv1 = conv_last.backward(dconv2, reset_grads);
 
     // run relu(dconv1)
     relu(dconv1);
 
     // run conv.backward(dconv1) = dimage
-    Conv_Layer conv_first = conv_layers[0];
+    Conv_Layer conv_first = conv_layers.at(0);
     array3D<float> dimage = conv_first.backward(dconv1, reset_grads);
 
     // now pass all gradients to adam optimizer
@@ -170,7 +171,7 @@ void softmax(vector<float> &in)
     float sum = 0;
     for (float &p : in)
     {
-        exp(p);
+        p = exp(p);
         sum += p;
     }
     for (float &p : in)
@@ -179,8 +180,8 @@ void softmax(vector<float> &in)
 
 float cat_cross_entropy(vector<float> &pred_probs, vector<uint8_t> &true_labels)
 {
-    int i = 0, tmp = 0;
-    float sum = 0;
+    int i = 0;
+    float sum = 0, tmp = 0;
     for (float p : pred_probs)
     {
         float l = true_labels[i];
@@ -221,7 +222,7 @@ vector<float> dot_product(array2D<float> &w, vector<float> &x)
     int cols = x.size();
     assert(w[0].size() == x.size());
     vector<float> product(rows);
-    int tmp = 0;
+    float tmp = 0;
     for (int i = 0; i < rows; i++)
     {
         float out_value = 0;
@@ -238,10 +239,10 @@ vector<float> dot_product(array2D<float> &w, vector<float> &x)
 
 void adam(vector<Conv_Layer> &conv_layers, vector<Dense_Layer> &dense_layers, float learning_rate, float beta1, float beta2, int batch_size) {
     // update dF and dB in both conv layers
-    array3D<float> conv_first_dF = conv_layers[0].get_dF();
-    array3D<float> conv_second_dF = conv_layers[1].get_dF();
-    vector<float> conv_first_dB = conv_layers[0].get_dB();
-    vector<float> conv_second_dB = conv_layers[1].get_dB();
+    array3D<float> conv_first_dF = conv_layers.at(0).get_dF();
+    array3D<float> conv_second_dF = conv_layers.at(1).get_dF();
+    vector<float> conv_first_dB = conv_layers.at(0).get_dB();
+    vector<float> conv_second_dB = conv_layers.at(1).get_dB();
     int num_filters = conv_first_dF.size();
     int filter_dim = conv_first_dF[0].size();
     float v1 = 0, s1 = 0, v2 = 0, s2 = 0, bv1 = 0, bs1 = 0, bv2 = 0, bs2 = 0;
@@ -268,8 +269,8 @@ void adam(vector<Conv_Layer> &conv_layers, vector<Dense_Layer> &dense_layers, fl
     }
 
     // update dW and dB in first dense layer
-    array2D<float> dense_first_dW = dense_layers[0].get_dW();
-    vector<float> dense_first_dB = dense_layers[0].get_dB(); // size is out_dim
+    array2D<float> dense_first_dW = dense_layers.at(0).get_dW();
+    vector<float> dense_first_dB = dense_layers.at(0).get_dB(); // size is out_dim
     int dense_first_out_dim = dense_first_dW.size();
     int dense_first_in_dim = dense_first_dW[0].size();
     float v3 = 0, s3 = 0, bv3 = 0, bs3 = 0;
@@ -285,8 +286,8 @@ void adam(vector<Conv_Layer> &conv_layers, vector<Dense_Layer> &dense_layers, fl
     }
 
     // update dW and dB in second dense layer
-    array2D<float> dense_second_dW = dense_layers[1].get_dW();
-    vector<float> dense_second_dB = dense_layers[1].get_dB(); // size is out_dim
+    array2D<float> dense_second_dW = dense_layers.at(1).get_dW();
+    vector<float> dense_second_dB = dense_layers.at(1).get_dB(); // size is out_dim
     int out_dim = dense_second_dW.size();
     int in_dim = dense_second_dW[0].size();
     float v4 = 0, s4 = 0, bv4 = 0, bs4 = 0;

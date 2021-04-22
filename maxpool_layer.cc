@@ -50,17 +50,18 @@ void MaxPool_Layer::argmax(int channel_num, int curr_y, int curr_x, int &y_max, 
 
 array3D<float> MaxPool_Layer::backward(array3D<float> &dprev) {
     int orig_dim = orig_image[0].size();
-    int num_channels = orig_image.size();
-    int curr_y = 0, out_y = 0;
+    int num_channels = orig_image.size();    
     int y_max = -1, x_max = -1;
     vector<vector<vector<float> > > dout(num_channels, vector<vector<float> >(orig_dim, vector<float>(orig_dim)));
     for(int n = 0; n < num_channels; n++) {
+        int curr_y = 0, out_y = 0;
         while(curr_y + kernel_size <= orig_dim) {
             int curr_x = 0, out_x = 0;
             while(curr_x + kernel_size <= orig_dim) {
                 argmax(n, curr_y, curr_x, y_max, x_max); // find index of value that was chosen by max pool in forward pass
                 // argmax should return max val for current window, window moves in each inner and outer while, each iteration has its own max
                 // that should be set in dout
+                // forward picks first max val if more than one are equal, argmax should pick the first also
                 dout[n][y_max][x_max] = dprev[n][out_y][out_x]; // only non zero values will be at indexes chosen in forward pass
                 curr_x += stride;
                 out_x++;
