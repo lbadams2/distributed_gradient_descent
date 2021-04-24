@@ -92,9 +92,9 @@ vector<float>& Dense_Layer::get_dB() {
 }
 
 array2D<float>& Dense_Layer::get_weights() {
-    return dW;
+    return weights;
 }
 
 vector<float>& Dense_Layer::get_bias() {
-    return dB;
+    return bias;
 }

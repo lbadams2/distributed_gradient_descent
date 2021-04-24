@@ -1,6 +1,6 @@
 #include "cnn.h"
 
-Model::Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride, int dense_first_out_dim) : filter_dim(filter_dim), pool_dim(pool_dim), num_filters(num_filters), pool_stride(pool_stride), conv_stride(conv_stride), dense_first_out_dim(dense_first_out_dim), maxpool_layer(pool_dim, pool_stride)
+Model::Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride, int dense_first_out_dim, float learning_rate, float beta1, float beta2, int batch_size) : filter_dim(filter_dim), pool_dim(pool_dim), num_filters(num_filters), pool_stride(pool_stride), conv_stride(conv_stride), dense_first_out_dim(dense_first_out_dim), maxpool_layer(pool_dim, pool_stride), learning_rate(learning_rate), beta1(beta1), beta2(beta2), batch_size(batch_size)
 {
     int num_channels_first_conv = 1; // num channels in mnist images
     Conv_Layer conv_first(num_filters, filter_dim, num_channels_first_conv, conv_stride, IMAGE_DIM);
@@ -21,6 +21,27 @@ Model::Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int
     dense_layers[0] = dense_first;
     dense_layers[1] = dense_last;
     this->dense_layers = dense_layers;
+    
+    // init adam vars
+    this->m_df1 = vector<vector<vector<vector<float> > > >(num_filters, vector<vector<vector<float> > >(num_channels_first_conv, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
+    this->m_db1 = vector<float>(num_filters, 0);
+    this->v_df1 = vector<vector<vector<vector<float> > > >(num_filters, vector<vector<vector<float> > >(num_channels_first_conv, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
+    this->v_db1 = vector<float>(num_filters, 0);
+    
+    this->m_df2 = vector<vector<vector<vector<float> > > >(num_filters, vector<vector<vector<float> > >(num_channels_last_conv, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
+    this->m_db2 = vector<float>(num_filters, 0);
+    this->v_df2 = vector<vector<vector<vector<float> > > >(num_filters, vector<vector<vector<float> > >(num_channels_last_conv, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
+    this->v_db2 = vector<float>(num_filters, 0);
+    
+    this->m_dw1 = vector<vector<float> >(dense_first_out_dim, vector<float>(flattened_dim, 0));
+    this->m_db3 = vector<float>(dense_first_out_dim, 0);
+    this->v_dw1 = vector<vector<float> >(dense_first_out_dim, vector<float>(flattened_dim, 0));
+    this->v_db3 = vector<float>(dense_first_out_dim, 0);
+    
+    this->m_dw2 = vector<vector<float> >(NUM_LABELS, vector<float>(dense_first_out_dim, 0));
+    this->m_db4 = vector<float>(NUM_LABELS, 0);
+    this->v_dw2 = vector<vector<float> >(NUM_LABELS, vector<float>(dense_first_out_dim, 0));
+    this->v_db4 = vector<float>(NUM_LABELS, 0);
 }
 
 vector<float> Model::forward(array3D<float> &image, vector<uint8_t> &label_one_hot) {
@@ -52,7 +73,7 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool
     // now dot product of dout with input to dense_last transposed, z^T gives dL/dW_last
     // w_last * z + b_last = out, out is probability vector
     // dL/dW_last = dL/dout * dout/dW_last, this is a matrix
-    Dense_Layer dense_last = dense_layers.at(1);
+    Dense_Layer& dense_last = dense_layers.at(1);
     vector<float> dz = dense_last.backward(dout, reset_grads);
 
     // dL/db_last = dL/dout * dout/db_last = dL/dout
@@ -76,7 +97,7 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool
     // wfirst * fc + b_first = z
     // dL/dz * dz/dfc = dL/dfc
     // w_first^T * dz = dL/dfc
-    Dense_Layer dense_first = dense_layers.at(0);
+    Dense_Layer& dense_first = dense_layers.at(0);
     vector<float> dfc = dense_first.backward(dz, reset_grads);
 
     // now reshape dfc (unflatten) to match dimension of max pooling output
@@ -91,17 +112,104 @@ void Model::backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool
     relu(dconv2);
 
     // run conv.backward(dconv2) = dconv1
-    Conv_Layer conv_last = conv_layers.at(1);
+    Conv_Layer& conv_last = conv_layers.at(1);
     array3D<float> dconv1 = conv_last.backward(dconv2, reset_grads);
 
     // run relu(dconv1)
     relu(dconv1);
 
     // run conv.backward(dconv1) = dimage
-    Conv_Layer conv_first = conv_layers.at(0);
+    Conv_Layer& conv_first = conv_layers.at(0);
     array3D<float> dimage = conv_first.backward(dconv1, reset_grads);
 
     // now pass all gradients to adam optimizer
+}
+
+void Model::adam() {
+    // update dF and dB in both conv layers
+    array4D<float> conv_first_dF = conv_layers.at(0).get_dF();
+    vector<float> conv_first_dB = conv_layers.at(0).get_dB();
+
+    array4D<float>& conv_first_filters = conv_layers.at(0).get_filters();
+    vector<float>& conv_first_bias = conv_layers.at(0).get_bias();
+
+    int num_filters = conv_first_dF.size();
+    int num_channels = conv_first_dF[0].size();
+    int filter_dim = conv_first_dF[0][0].size();
+    float epsilon = .0000001; // to prevent division by zero
+    for(int f = 0; f < num_filters; f++) {
+        m_db1[f] = beta1*m_db1[f] + (1 - beta1) * (conv_first_dB[f] / batch_size);
+        v_db1[f] = beta2*v_db1[f] + (1 - beta2) * pow(conv_first_dB[f] / batch_size, 2);
+        conv_first_bias[f] -= learning_rate * m_db1[f]/sqrt(v_db1[f] + epsilon);
+        
+        for(int n = 0; n < num_channels; n++)
+            for(int i = 0; i < filter_dim; i++) {
+                for(int j = 0; j < filter_dim; j++) {
+                    m_df1[f][n][i][j] = beta1*m_df1[f][n][i][j] + (1 - beta1) * (conv_first_dF[f][n][i][j] / batch_size);
+                    v_df1[f][n][i][j] = beta2*v_df1[f][n][i][j] + (1 - beta2) * pow(conv_first_dF[f][n][i][j] / batch_size, 2);
+                    conv_first_filters[f][n][i][j] -= learning_rate * m_df1[f][n][i][j]/sqrt(v_df1[f][n][i][j] + epsilon);
+                }
+            }
+    }
+    
+    array4D<float> conv_second_dF = conv_layers.at(1).get_dF();
+    vector<float> conv_second_dB = conv_layers.at(1).get_dB();
+    
+    array4D<float>& conv_second_filters = conv_layers.at(1).get_filters();
+    vector<float>& conv_second_bias = conv_layers.at(1).get_bias();
+    num_channels = conv_second_dF[0].size();
+    for(int f = 0; f < num_filters; f++) {
+        m_db2[f] = beta1*m_db2[f] + (1 - beta1) * (conv_second_dB[f] / batch_size);
+        v_db2[f] = beta2*v_db2[f] + (1 - beta2) * pow(conv_second_dB[f] / batch_size, 2);
+        conv_second_bias[f] -= learning_rate * m_db2[f]/sqrt(v_db2[f] + epsilon);
+        
+        for(int n = 0; n < num_channels; n++)
+            for(int i = 0; i < filter_dim; i++) {
+                for(int j = 0; j < filter_dim; j++) {
+                    m_df2[f][n][i][j] = beta1*m_df2[f][n][i][j] + (1 - beta1) * (conv_second_dF[f][n][i][j] / batch_size);
+                    v_df2[f][n][i][j] = beta2*v_df2[f][n][i][j] + (1 - beta2) * pow(conv_second_dF[f][n][i][j] / batch_size, 2);
+                    conv_second_filters[f][n][i][j] -= learning_rate * m_df2[f][n][i][j]/sqrt(v_df2[f][n][i][j] + epsilon);
+                }
+            }
+    }
+    
+
+    // update dW and dB in first dense layer
+    array2D<float> dense_first_dW = dense_layers.at(0).get_dW();
+    vector<float> dense_first_dB = dense_layers.at(0).get_dB(); // size is out_dim
+
+    array2D<float>& dense_first_weights = dense_layers.at(0).get_weights();
+    vector<float>& dense_first_bias = dense_layers.at(0).get_bias(); // size is out_dim
+
+    int dense_first_out_dim = dense_first_dW.size();
+    int dense_first_in_dim = dense_first_dW[0].size();
+    for(int i = 0; i < dense_first_out_dim; i++) {
+        m_db3[i] = beta1*m_db3[i] + (1 - beta1) * (dense_first_dB[i] / batch_size);
+        v_db3[i] = beta2*v_db3[i] + (1 - beta2) * pow(dense_first_dB[i] / batch_size, 2);
+        dense_first_bias[i] -= learning_rate * m_db3[i]/sqrt(v_db3[i] + epsilon);
+        for(int j = 0; j < dense_first_in_dim; j++) {
+            m_dw1[i][j] = beta1*m_dw1[i][j] + (1 - beta1) * (dense_first_dW[i][j] / batch_size);
+            v_dw1[i][j] = beta2*v_dw1[i][j] + (1 - beta2) * pow(dense_first_dW[i][j] / batch_size, 2);
+            dense_first_weights[i][j] -= learning_rate * m_dw1[i][j]/sqrt(v_dw1[i][j] + epsilon);
+        }
+    }
+
+    // update dW and dB in second dense layer
+    array2D<float> dense_second_dW = dense_layers.at(1).get_dW();
+    vector<float> dense_second_dB = dense_layers.at(1).get_dB(); // size is out_dim
+
+    array2D<float>& dense_second_weights = dense_layers.at(1).get_weights();
+    vector<float>& dense_second_bias = dense_layers.at(1).get_bias(); // size is out_dim
+    for(int i = 0; i < NUM_LABELS; i++) {
+        m_db4[i] = beta1*m_db4[i] + (1 - beta1) * (dense_second_dB[i] / batch_size);
+        v_db4[i] = beta2*v_db4[i] + (1 - beta2) * pow(dense_second_dB[i] / batch_size, 2);
+        dense_second_bias[i] -= learning_rate * m_db4[i]/sqrt(v_db4[i] + epsilon);
+        for(int j = 0; j < dense_first_out_dim; j++) {
+            m_dw2[i][j] = beta1*m_dw2[i][j] + (1 - beta1) * (dense_second_dW[i][j] / batch_size);
+            v_dw2[i][j] = beta2*v_dw2[i][j] + (1 - beta2) * pow(dense_second_dW[i][j] / batch_size, 2);
+            dense_second_weights[i][j] -= learning_rate * m_dw2[i][j]/sqrt(v_dw2[i][j] + epsilon);
+        }
+    }
 }
 
 vector<Dense_Layer>& Model::get_dense_layers() {
@@ -235,86 +343,4 @@ vector<float> dot_product(array2D<float> &w, vector<float> &x)
     }
 
     return product;
-}
-
-void adam(vector<Conv_Layer> &conv_layers, vector<Dense_Layer> &dense_layers, float learning_rate, float beta1, float beta2, int batch_size) {
-    // update dF and dB in both conv layers
-    array4D<float> conv_first_dF = conv_layers.at(0).get_dF();
-    array4D<float> conv_second_dF = conv_layers.at(1).get_dF();
-    vector<float> conv_first_dB = conv_layers.at(0).get_dB();
-    vector<float> conv_second_dB = conv_layers.at(1).get_dB();
-
-    array4D<float> conv_first_filters = conv_layers.at(0).get_filters();
-    array4D<float> conv_second_filters = conv_layers.at(1).get_filters();
-    vector<float> conv_first_bias = conv_layers.at(0).get_bias();
-    vector<float> conv_second_bias = conv_layers.at(1).get_bias();
-
-    int num_filters = conv_first_dF.size();
-    int num_channels = conv_first_dF[0].size();
-    int filter_dim = conv_first_dF[0][0].size();
-    float v1 = 0, s1 = 0, v2 = 0, s2 = 0, bv1 = 0, bs1 = 0, bv2 = 0, bs2 = 0;
-    float epsilon = .0000001; // to prevent division by zero
-    for(int f = 0; f < num_filters; f++) {
-        bv1 =  (1 - beta1) * conv_first_dB[f] / batch_size;
-        bs1 = (1 - beta2) / pow(conv_first_dB[f] / batch_size, 2);
-        conv_first_bias[f] -= learning_rate * bv1/sqrt(bs1 + epsilon);
-
-        bv2 =  (1 - beta1) * conv_second_dB[f] / batch_size;
-        bs2 = (1 - beta2) / pow(conv_second_dB[f] / batch_size, 2);
-        conv_second_bias[f] -= learning_rate * bv2/sqrt(bs2 + epsilon);
-        for(int n = 0; n < num_channels; n++)
-            for(int i = 0; i < filter_dim; i++) {
-                for(int j = 0; j < filter_dim; j++) {
-                    v1 =  (1 - beta1) * conv_first_dF[f][n][i][j] / batch_size;
-                    s1 = (1 - beta2) / pow(conv_first_dF[f][n][i][j] / batch_size, 2);
-                    conv_first_dF[f][n][i][j] -= learning_rate * v1/sqrt(s1 + epsilon);
-
-                    v2 =  (1 - beta1) * conv_second_dF[f][n][i][j] / batch_size;
-                    s2 = (1 - beta2) / pow(conv_second_dF[f][n][i][j] / batch_size, 2);
-                    conv_second_dF[f][n][i][j] -= learning_rate * v1/sqrt(s1 + epsilon);
-                }
-            }
-    }
-
-    // update dW and dB in first dense layer
-    array2D<float> dense_first_dW = dense_layers.at(0).get_dW();
-    vector<float> dense_first_dB = dense_layers.at(0).get_dB(); // size is out_dim
-
-    array2D<float> dense_first_weights = dense_layers.at(0).get_weights();
-    vector<float> dense_first_bias = dense_layers.at(0).get_bias(); // size is out_dim
-
-    int dense_first_out_dim = dense_first_dW.size();
-    int dense_first_in_dim = dense_first_dW[0].size();
-    float v3 = 0, s3 = 0, bv3 = 0, bs3 = 0;
-    for(int i = 0; i < dense_first_out_dim; i++) {
-        bv3 =  (1 - beta1) * dense_first_dB[i] / batch_size;
-        bs3 = (1 - beta2) / pow(dense_first_dB[i] / batch_size, 2);
-        dense_first_bias[i] -= learning_rate * bv3/sqrt(bs3 + epsilon);
-        for(int j = 0; j < dense_first_in_dim; j++) {
-            v3 =  (1 - beta1) * dense_first_dW[i][j] / batch_size;
-            s3 = (1 - beta2) / pow(dense_first_dW[i][j] / batch_size, 2);
-            dense_first_weights[i][j] -= learning_rate * v3/sqrt(s3 + epsilon);
-        }
-    }
-
-    // update dW and dB in second dense layer
-    array2D<float> dense_second_dW = dense_layers.at(1).get_dW();
-    vector<float> dense_second_dB = dense_layers.at(1).get_dB(); // size is out_dim
-
-    array2D<float> dense_second_weights = dense_layers.at(1).get_weights();
-    vector<float> dense_second_bias = dense_layers.at(1).get_bias(); // size is out_dim
-
-    int out_dim = dense_second_dW.size();
-    int in_dim = dense_second_dW[0].size();
-    float v4 = 0, s4 = 0, bv4 = 0, bs4 = 0;
-    for(int i = 0; i < NUM_LABELS; i++) {
-        bv3 =  (1 - beta1) * dense_second_dB[i] / batch_size;
-        bs3 = (1 - beta2) / pow(dense_second_dB[i] / batch_size, 2);
-        dense_second_bias[i] -= learning_rate * bv3/sqrt(bs3 + epsilon);
-        for(int j = 0; j < dense_first_out_dim; j++) {
-            v3 =  (1 - beta1) * dense_second_dW[i][j] / batch_size;
-            s3 = (1 - beta2) / pow(dense_second_dW[i][j] / batch_size, 2);
-            dense_second_weights[i][j] -= learning_rate * v3/sqrt(s3 + epsilon);
-        }
-    }
 }

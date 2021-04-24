@@ -24,7 +24,7 @@ int main() {
     vector<float> images = get_training_images();
     vector<uint8_t> labels = get_training_labels();
 
-    int batch_size = 25;
+    int batch_size = 32;
     int num_channels = 1; // grayscale
     int image_size = IMAGE_DIM * IMAGE_DIM;
     int num_images = images.size() / image_size;
@@ -39,16 +39,13 @@ int main() {
     cout << "done creating batches" << endl;
     // num_filters is number of filters in each conv layer, filter dim is size of filter squares
     int filter_dim = 5, pool_dim = 2, num_filters = 8, pool_stride = 2, conv_stride = 1, dense_first_out_dim = 128;
-    Model cnn(filter_dim, pool_dim, num_filters, pool_stride, conv_stride, dense_first_out_dim);    
-    
-    vector<Dense_Layer> dense_layers = cnn.get_dense_layers();
-    vector<Conv_Layer> conv_layers = cnn.get_conv_layers();
+    float learning_rate = .01, beta1 = .95, beta2 = .99;
+    Model cnn(filter_dim, pool_dim, num_filters, pool_stride, conv_stride, dense_first_out_dim, learning_rate, beta1, beta2, batch_size);
     
     float batch_loss = 0, image_loss = 0;
-    float learning_rate = .01, beta1 = .95, beta2 = .99;
     bool reset_grads = true;
     for(int n = 0; n < num_batches; n++) {
-        batch_loss = 0;        
+        batch_loss = 0;
         reset_grads = true;
         cout << "processing batch " << n << endl;
         for(int b = 0; b < batch_size; b++) {
@@ -64,6 +61,6 @@ int main() {
             reset_grads = false;
         }
         cout << "Loss for batch " << n << ": " << batch_loss / batch_size;
-        adam(conv_layers, dense_layers, learning_rate, beta1, beta2, batch_size);
+        cnn.adam();
     }
 }

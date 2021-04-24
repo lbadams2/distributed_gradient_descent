@@ -85,11 +85,12 @@ private:
 
 class Model {
 public:
-    Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride, int dense_first_out_dim);
+    Model(int filter_dim, int pool_dim, int num_filters, int pool_stride, int conv_stride, int dense_first_out_dim, float learning_rate, float beta1, float beta2, int batch_size);
     void backprop(vector<float> &probs, vector<uint8_t> &labels_one_hot, bool reset_grads);
     vector<float> forward(array3D<float> &image, vector<uint8_t> &label_one_hot);
     vector<Dense_Layer>& get_dense_layers();
     vector<Conv_Layer>& get_conv_layers();
+    void adam();
 private:
     vector<Dense_Layer> dense_layers;
     vector<Conv_Layer> conv_layers;
@@ -100,6 +101,30 @@ private:
     int num_filters;
     int pool_stride;
     int conv_stride;
+    float learning_rate;
+    float beta1;
+    float beta2;
+    int batch_size;
+    
+    array4D<float> m_df1;
+    vector<float> m_db1;
+    array4D<float> v_df1;
+    vector<float> v_db1;
+    
+    array4D<float> m_df2;
+    vector<float> m_db2;
+    array4D<float> v_df2;
+    vector<float> v_db2;
+    
+    array2D<float> m_dw1;
+    vector<float> m_db3;
+    array2D<float> v_dw1;
+    vector<float> v_db3;
+    
+    array2D<float> m_dw2;
+    vector<float> m_db4;
+    array2D<float> v_dw2;
+    vector<float> v_db4;
 };
 
 array3D<float> unflatten(vector<float> &vec, int num_filters, int pool_dim);
@@ -111,6 +136,5 @@ float cat_cross_entropy(vector<float> &pred_probs, vector<uint8_t> &true_labels)
 array2D<float> rotate_180(array2D<float> filter);
 array2D<float> transpose(array2D<float> &w);
 vector<float> dot_product(array2D<float> &w, vector<float> &x);
-void adam(vector<Conv_Layer> &conv_layers, vector<Dense_Layer> &dense_layers, float learning_rate, float beta1, float beta2, int batch_size);
 
 #endif
