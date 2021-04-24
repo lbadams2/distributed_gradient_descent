@@ -53,6 +53,9 @@ vector<float> Dense_Layer::backward(vector<float> &dprev, bool reset_grads)
         this->dB = dB;
     }
     */
+
+    if(reset_grads)
+        this->weights_T = transpose(weights);
     
     // dW is outer product of dprev and orig_in to get matrix
     for(int i  = 0; i < dprev.size(); i++) {
@@ -85,5 +88,13 @@ array2D<float>& Dense_Layer::get_dW() {
 }
 
 vector<float>& Dense_Layer::get_dB() {
+    return dB;
+}
+
+array2D<float>& Dense_Layer::get_weights() {
+    return dW;
+}
+
+vector<float>& Dense_Layer::get_bias() {
     return dB;
 }

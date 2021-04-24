@@ -999,12 +999,12 @@ void test_create_batches() {
 
 int main()
 {
-    test_maxpool_back();
+    //test_maxpool_back();
     //test_maxpool();
     //test_load_images();
     //test_conv_bp();
     //test_conv();
     //test_create_batch_from_vec();
     //test_convert_2D();
-    //test_create_batches();
+    test_create_batches();
 }

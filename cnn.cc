@@ -239,66 +239,82 @@ vector<float> dot_product(array2D<float> &w, vector<float> &x)
 
 void adam(vector<Conv_Layer> &conv_layers, vector<Dense_Layer> &dense_layers, float learning_rate, float beta1, float beta2, int batch_size) {
     // update dF and dB in both conv layers
-    array3D<float> conv_first_dF = conv_layers.at(0).get_dF();
-    array3D<float> conv_second_dF = conv_layers.at(1).get_dF();
+    array4D<float> conv_first_dF = conv_layers.at(0).get_dF();
+    array4D<float> conv_second_dF = conv_layers.at(1).get_dF();
     vector<float> conv_first_dB = conv_layers.at(0).get_dB();
     vector<float> conv_second_dB = conv_layers.at(1).get_dB();
+
+    array4D<float> conv_first_filters = conv_layers.at(0).get_filters();
+    array4D<float> conv_second_filters = conv_layers.at(1).get_filters();
+    vector<float> conv_first_bias = conv_layers.at(0).get_bias();
+    vector<float> conv_second_bias = conv_layers.at(1).get_bias();
+
     int num_filters = conv_first_dF.size();
-    int filter_dim = conv_first_dF[0].size();
+    int num_channels = conv_first_dF[0].size();
+    int filter_dim = conv_first_dF[0][0].size();
     float v1 = 0, s1 = 0, v2 = 0, s2 = 0, bv1 = 0, bs1 = 0, bv2 = 0, bs2 = 0;
     float epsilon = .0000001; // to prevent division by zero
     for(int f = 0; f < num_filters; f++) {
         bv1 =  (1 - beta1) * conv_first_dB[f] / batch_size;
         bs1 = (1 - beta2) / pow(conv_first_dB[f] / batch_size, 2);
-        conv_first_dB[f] -= learning_rate * bv1/sqrt(bs1 + epsilon);
+        conv_first_bias[f] -= learning_rate * bv1/sqrt(bs1 + epsilon);
 
         bv2 =  (1 - beta1) * conv_second_dB[f] / batch_size;
         bs2 = (1 - beta2) / pow(conv_second_dB[f] / batch_size, 2);
-        conv_second_dB[f] -= learning_rate * bv2/sqrt(bs2 + epsilon);
-        for(int i = 0; i < filter_dim; i++) {
-            for(int j = 0; j < filter_dim; j++) {
-                v1 =  (1 - beta1) * conv_first_dF[f][i][j] / batch_size;
-                s1 = (1 - beta2) / pow(conv_first_dF[f][i][j] / batch_size, 2);
-                conv_first_dF[f][i][j] -= learning_rate * v1/sqrt(s1 + epsilon);
+        conv_second_bias[f] -= learning_rate * bv2/sqrt(bs2 + epsilon);
+        for(int n = 0; n < num_channels; n++)
+            for(int i = 0; i < filter_dim; i++) {
+                for(int j = 0; j < filter_dim; j++) {
+                    v1 =  (1 - beta1) * conv_first_dF[f][n][i][j] / batch_size;
+                    s1 = (1 - beta2) / pow(conv_first_dF[f][n][i][j] / batch_size, 2);
+                    conv_first_dF[f][n][i][j] -= learning_rate * v1/sqrt(s1 + epsilon);
 
-                v2 =  (1 - beta1) * conv_second_dF[f][i][j] / batch_size;
-                s2 = (1 - beta2) / pow(conv_second_dF[f][i][j] / batch_size, 2);
-                conv_second_dF[f][i][j] -= learning_rate * v1/sqrt(s1 + epsilon);
+                    v2 =  (1 - beta1) * conv_second_dF[f][n][i][j] / batch_size;
+                    s2 = (1 - beta2) / pow(conv_second_dF[f][n][i][j] / batch_size, 2);
+                    conv_second_dF[f][n][i][j] -= learning_rate * v1/sqrt(s1 + epsilon);
+                }
             }
-        }
     }
 
     // update dW and dB in first dense layer
     array2D<float> dense_first_dW = dense_layers.at(0).get_dW();
     vector<float> dense_first_dB = dense_layers.at(0).get_dB(); // size is out_dim
+
+    array2D<float> dense_first_weights = dense_layers.at(0).get_weights();
+    vector<float> dense_first_bias = dense_layers.at(0).get_bias(); // size is out_dim
+
     int dense_first_out_dim = dense_first_dW.size();
     int dense_first_in_dim = dense_first_dW[0].size();
     float v3 = 0, s3 = 0, bv3 = 0, bs3 = 0;
     for(int i = 0; i < dense_first_out_dim; i++) {
         bv3 =  (1 - beta1) * dense_first_dB[i] / batch_size;
         bs3 = (1 - beta2) / pow(dense_first_dB[i] / batch_size, 2);
-        dense_first_dB[i] -= learning_rate * bv3/sqrt(bs3 + epsilon);
+        dense_first_bias[i] -= learning_rate * bv3/sqrt(bs3 + epsilon);
         for(int j = 0; j < dense_first_in_dim; j++) {
             v3 =  (1 - beta1) * dense_first_dW[i][j] / batch_size;
             s3 = (1 - beta2) / pow(dense_first_dW[i][j] / batch_size, 2);
-            dense_first_dW[i][j] -= learning_rate * v3/sqrt(s3 + epsilon);
+            dense_first_weights[i][j] -= learning_rate * v3/sqrt(s3 + epsilon);
         }
     }
 
     // update dW and dB in second dense layer
     array2D<float> dense_second_dW = dense_layers.at(1).get_dW();
     vector<float> dense_second_dB = dense_layers.at(1).get_dB(); // size is out_dim
+
+    array2D<float> dense_second_weights = dense_layers.at(1).get_weights();
+    vector<float> dense_second_bias = dense_layers.at(1).get_bias(); // size is out_dim
+
     int out_dim = dense_second_dW.size();
     int in_dim = dense_second_dW[0].size();
     float v4 = 0, s4 = 0, bv4 = 0, bs4 = 0;
     for(int i = 0; i < NUM_LABELS; i++) {
         bv3 =  (1 - beta1) * dense_second_dB[i] / batch_size;
         bs3 = (1 - beta2) / pow(dense_second_dB[i] / batch_size, 2);
-        dense_second_dB[i] -= learning_rate * bv3/sqrt(bs3 + epsilon);
+        dense_second_bias[i] -= learning_rate * bv3/sqrt(bs3 + epsilon);
         for(int j = 0; j < dense_first_out_dim; j++) {
             v3 =  (1 - beta1) * dense_second_dW[i][j] / batch_size;
             s3 = (1 - beta2) / pow(dense_second_dW[i][j] / batch_size, 2);
-            dense_second_dW[i][j] -= learning_rate * v3/sqrt(s3 + epsilon);
+            dense_second_weights[i][j] -= learning_rate * v3/sqrt(s3 + epsilon);
         }
     }
 }

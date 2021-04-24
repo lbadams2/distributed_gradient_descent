@@ -30,8 +30,10 @@ public:
     array3D<float> forward(array3D<float> &image);
     array3D<float> backward(array3D<float> &dprev, bool reset_grads);
     int get_out_dim();
-    array3D<float>& get_dF();
+    array4D<float>& get_dF();
     vector<float>& get_dB();
+    array4D<float>& get_filters();
+    vector<float>& get_bias();
 private:
     array4D<float> filters;
     vector<float> bias;
@@ -42,7 +44,7 @@ private:
     int image_dim;
     int out_dim;
     array3D<float> image; // save this for back prop
-    array3D<float> df;
+    array4D<float> df;
     vector<float> dB;
 };
 
@@ -55,6 +57,8 @@ public:
     int get_in_dim();
     array2D<float>& get_dW();
     vector<float>& get_dB();
+    array2D<float>& get_weights();
+    vector<float>& get_bias();
 private:
     array2D<float> weights;
     array2D<float> weights_T; // update this after each mini batch, after adam is run

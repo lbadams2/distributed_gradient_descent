@@ -26,7 +26,7 @@ Conv_Layer::Conv_Layer(int nf, int filter_dim, int num_channels, int stride, int
     vector<float> bias(num_filters, 0); // 1 bias per filter
     this->bias = bias;
 
-    vector<vector<vector<float> > > df(num_filters, vector<vector<float>>(filter_dim, vector<float>(filter_dim, 0)));
+    vector<vector<vector<vector<float> > > > df(num_filters, vector<vector<vector<float> > >(num_channels, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
     this->df = df;
     vector<float> dB(num_filters, 0); // 1 bias per filter
     this->dB = dB;
@@ -81,10 +81,10 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev, bool reset_grads)
                             sum += prod;
                         }
                     }
-                    if(reset_grads && n == 0)
-                        df[f][out_y][out_x] = sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
+                    if(reset_grads)
+                        df[f][n][out_y][out_x] = sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
                     else
-                        df[f][out_y][out_x] += sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
+                        df[f][n][out_y][out_x] += sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
                     curr_x += stride;
                     out_x++;
                 }
@@ -214,10 +214,18 @@ int Conv_Layer::get_out_dim()
     return out_dim;
 }
 
-array3D<float>& Conv_Layer::get_dF() {
+array4D<float>& Conv_Layer::get_dF() {
     return df;
 }
 
 vector<float>& Conv_Layer::get_dB() {
     return dB;
+}
+
+array4D<float>& Conv_Layer::get_filters() {
+    return filters;
+}
+
+vector<float>& Conv_Layer::get_bias() {
+    return bias;
 }
