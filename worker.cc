@@ -11,7 +11,6 @@
 using std::cout;
 using std::endl;
 
-#define PORT 8080
 #define NUM_IMAGES 5
 #define NUM_FILTERS 4
 #define FILTER_DIM 2
@@ -91,9 +90,8 @@ int main(int argc, char const *argv[])
     struct sockaddr_in address;
     int opt = 1;
     int addrlen = sizeof(address);
-        
-    char *hello = "Hello from server";
-       
+    int port = atoi(argv[1]);
+    cout << "port " << port << endl;
     // Creating socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
     {
@@ -109,7 +107,7 @@ int main(int argc, char const *argv[])
     }
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons( PORT );
+    address.sin_port = htons( port );
        
     // Forcefully attaching socket to the port 8080
     if (bind(server_fd, (struct sockaddr *)&address, 
@@ -119,18 +117,24 @@ int main(int argc, char const *argv[])
         exit(EXIT_FAILURE);
     }
 
-    int buf_len = NUM_IMAGES * TEST_IMAGE_DIM * TEST_IMAGE_DIM * DENSE_FIRST_IN * DENSE_FIRST_OUT * NUM_FILTERS * FILTER_CHANNELS * FILTER_DIM * FILTER_DIM * BIAS_DIM;        
-    float buffer[NUM_IMAGES * TEST_IMAGE_DIM * TEST_IMAGE_DIM * DENSE_FIRST_IN * DENSE_FIRST_OUT * NUM_FILTERS * FILTER_CHANNELS * FILTER_DIM * FILTER_DIM * BIAS_DIM] = {0};
+    int buf_len = NUM_IMAGES * TEST_IMAGE_DIM * TEST_IMAGE_DIM * DENSE_FIRST_IN * DENSE_FIRST_OUT * NUM_FILTERS * FILTER_CHANNELS * FILTER_DIM * FILTER_DIM * BIAS_DIM;    
     int loop_idx = 0;
+    char* hello;
     while(true) {        
+        float buffer[NUM_IMAGES * TEST_IMAGE_DIM * TEST_IMAGE_DIM * DENSE_FIRST_IN * DENSE_FIRST_OUT * NUM_FILTERS * FILTER_CHANNELS * FILTER_DIM * FILTER_DIM * BIAS_DIM] = {0};
         cout << "reading socket loop_idx: " << loop_idx << endl;
+        if(loop_idx == 0)
+            hello = "Hello from server 0";
+        else
+            hello = "Hello from server 1";
+        
         if (listen(server_fd, 3) < 0)
-    {
-        perror("listen");
-        exit(EXIT_FAILURE);
-    }    
+        {
+            perror("listen");
+            exit(EXIT_FAILURE);
+        }    
 
-    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, 
+        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, 
                        (socklen_t*)&addrlen))<0)
         {
             perror("accept");

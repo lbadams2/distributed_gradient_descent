@@ -6,17 +6,22 @@
 #include <string.h>
 #include "cnn.h"
 #include <iostream>
+#include <thread>
+#include <mutex>
 
 using std::cout;
 using std::endl;
+using std::thread;
+using std::mutex;
+using std::lock_guard;
 
-#define PORT 8080
+mutex grad_mutex;
+array2D<float> dW;
+vector<float> dB;
 
-array4D<float> get_images(int num_images) {
+array4D<float> get_images(int num_images, normal_distribution<float> &normal_dist, default_random_engine &generator) {
     int image_dim = 5;
     vector<vector<vector<vector<float> > > > images(num_images, vector<vector<vector<float> > >(1, vector<vector<float> >(image_dim, vector<float>(image_dim))));
-    normal_distribution<float> normal_dist = normal_distribution<float>(0, 1);
-    default_random_engine generator;
     for(int n = 0; n < num_images; n++)
         for(int i = 0; i < image_dim; i++)
             for(int j = 0; j < image_dim; j++)
@@ -24,29 +29,23 @@ array4D<float> get_images(int num_images) {
     return images;
 }
 
-vector<float> get_bias(int out_dim) {
+vector<float> get_bias(int out_dim, normal_distribution<float> &normal_dist, default_random_engine &generator) {
     vector<float> bias(out_dim);
-    normal_distribution<float> normal_dist = normal_distribution<float>(0, 1);
-    default_random_engine generator;
     for(int i = 0; i < out_dim; i++)
         bias[i] = normal_dist(generator);
     return bias;
 }
 
-array2D<float> get_dense_weights(int out_dim, int in_dim) {
+array2D<float> get_dense_weights(int out_dim, int in_dim, normal_distribution<float> &normal_dist, default_random_engine &generator) {
     vector<vector<float>> weights(out_dim, vector<float>(in_dim));
-    normal_distribution<float> normal_dist = normal_distribution<float>(0, 1);
-    default_random_engine generator;
     for(int i = 0; i < out_dim; i++)
         for(int j = 0; j < in_dim; j++)
             weights[i][j] = normal_dist(generator);
     return weights;
 }
 
-array4D<float> get_filter_weights(int num_filters, int num_channels, int filter_dim) {
+array4D<float> get_filter_weights(int num_filters, int num_channels, int filter_dim, normal_distribution<float> &normal_dist, default_random_engine &generator) {
     vector<vector<vector<vector<float> > > > filters(num_filters, vector<vector<vector<float> > >(num_channels, vector<vector<float> >(filter_dim, vector<float>(filter_dim))));
-    normal_distribution<float> normal_dist = normal_distribution<float>(0, 1);
-    default_random_engine generator;
 
     for(int f = 0; f < num_filters; f++)
         for(int n = 0; n < num_channels; n++)
@@ -160,14 +159,10 @@ void print_weights(array2D<float> &images) {
     cout << endl;
     cout << endl;
 }
-   
-int main(int argc, char const *argv[])
-{
-    int sock = 0, valread;
-    struct sockaddr_in serv_addr;
-    
+
+vector<float> get_vec(normal_distribution<float> &normal_dist, default_random_engine &generator) {
     cout << "starting image data" << endl;
-    array4D<float> images = get_images(5);
+    array4D<float> images = get_images(5, normal_dist, generator);
     print_images(images);
     vector<float> flattened_images = flatten_images(images);
     cout << "flattened image size " << flattened_images.size() << endl;
@@ -177,7 +172,7 @@ int main(int argc, char const *argv[])
     cout << "ending image data\n\n\n";
 
     cout << "starting filter data" << endl;
-    array4D<float> filters = get_filter_weights(4, 3, 2);
+    array4D<float> filters = get_filter_weights(4, 3, 2, normal_dist, generator);
     print_filters(filters);
     vector<float> flattened_filters = flatten_filters(filters);
     cout << "flattened filter size " << flattened_filters.size() << endl;
@@ -187,7 +182,7 @@ int main(int argc, char const *argv[])
     cout << "ending filter data\n\n\n";
 
     cout << "starting weight data" << endl;
-    array2D<float> weights = get_dense_weights(3, 5);
+    array2D<float> weights = get_dense_weights(3, 5, normal_dist, generator);
     print_weights(weights);
     vector<float> flattened_weights = flatten_weights(weights);
     cout << "flattened weight size " << flattened_weights.size() << endl;
@@ -197,7 +192,7 @@ int main(int argc, char const *argv[])
     cout << "ending weight data\n\n\n";
 
     cout << "starting bias data" << endl;
-    vector<float> bias = get_bias(5);
+    vector<float> bias = get_bias(5, normal_dist, generator);
     print_vec(bias);
     cout << "flattened bias size " << bias.size() << endl;
     //print_vec(flattened_filters);
@@ -211,14 +206,17 @@ int main(int argc, char const *argv[])
     all_vec.insert( all_vec.end(), flattened_filters.begin(), flattened_filters.end() );
     all_vec.insert( all_vec.end(), flattened_weights.begin(), flattened_weights.end() );
     all_vec.insert( all_vec.end(), bias.begin(), bias.end() );
-    float* all_vec_arr = all_vec.data();
     
-    char buffer[1024] = {0};
+    return all_vec;
+}
 
-    
-   
+int send_vec(float* all_vec_arr, int vec_size, int port) {
+    int sock = 0, valread;
+    struct sockaddr_in serv_addr;
+    float buffer[19] = {0};
+    int buf_len = 19 * 4;
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT);
+    serv_addr.sin_port = htons(port);
        
     // Convert IPv4 and IPv6 addresses from text to binary form
     if(inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr)<=0) 
@@ -227,22 +225,39 @@ int main(int argc, char const *argv[])
         return -1;
     }
     
-    for(int i = 0; i < 2; i++) {   
-        if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+       
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
         printf("\n Socket creation error \n");
         return -1;
     } 
 
-        if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-            {
-                printf("\nConnection Failed \n");
-                return -1;
-            }            
-        send(sock , all_vec_arr , all_vec.size() * 4 , 0 ); // 3rd arg is length in bytes, float is 4 bytes
-        printf("Hello message sent\n");
-        valread = read( sock , buffer, 1024);
-        printf("%s\n",buffer );
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    {
+            printf("\nConnection Failed \n");
+            return -1;
+    }            
+    send(sock , all_vec_arr , vec_size * 4 , 0 ); // 3rd arg is length in bytes, float is 4 bytes
+    printf("Hello message sent\n");
+    valread = read( sock , buffer, buf_len);
+    printf("%s\n",buffer );
+}
+   
+int main(int argc, char const *argv[])
+{       
+    normal_distribution<float> normal_dist = normal_distribution<float>(0, 1);
+    default_random_engine generator;
+
+    for(int i = 0; i < 2; i++) {
+        vector<float> all_vec = get_vec(normal_dist, generator);
+        float* all_vec_arr = all_vec.data();
+        dW = array2D<float>(5, vector<float>(3, 0));
+        dB = vector<float>(4, 0);
+        thread t1(send_vec, all_vec.size(), 8080);
+        thread t2(send_vec, all_vec.size(), 8081);
+        t1.join();
+        t2.join();
     }
+    
     return 0;
 }
