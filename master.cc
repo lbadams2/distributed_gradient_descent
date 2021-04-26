@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <string.h>
+#include <string>
 #include "cnn.h"
 #include <iostream>
 #include <thread>
@@ -14,8 +15,19 @@ using std::endl;
 using std::thread;
 using std::mutex;
 using std::lock_guard;
+using std::string;
+
+#define NUM_IMAGES 5
+#define NUM_FILTERS 4
+#define FILTER_DIM 2
+#define FILTER_CHANNELS 3
+#define DENSE_FIRST_OUT 3
+#define DENSE_FIRST_IN 5
+#define TEST_IMAGE_DIM 5
+#define BIAS_DIM 5
 
 mutex grad_mutex;
+mutex cout_mutex;
 array2D<float> dW;
 vector<float> dB;
 
@@ -160,57 +172,46 @@ void print_weights(array2D<float> &images) {
     cout << endl;
 }
 
-vector<float> get_vec(normal_distribution<float> &normal_dist, default_random_engine &generator) {
-    cout << "starting image data" << endl;
-    array4D<float> images = get_images(5, normal_dist, generator);
-    print_images(images);
-    vector<float> flattened_images = flatten_images(images);
-    cout << "flattened image size " << flattened_images.size() << endl;
-    //print_vec(flattened_filters);
-    //float* filter_arr = flattened_filters.data();
-    //print_arr(filter_arr, flattened_filters.size());
-    cout << "ending image data\n\n\n";
-
-    cout << "starting filter data" << endl;
-    array4D<float> filters = get_filter_weights(4, 3, 2, normal_dist, generator);
-    print_filters(filters);
-    vector<float> flattened_filters = flatten_filters(filters);
-    cout << "flattened filter size " << flattened_filters.size() << endl;
-    //print_vec(flattened_filters);
-    //float* filter_arr = flattened_filters.data();
-    //print_arr(filter_arr, flattened_filters.size());
-    cout << "ending filter data\n\n\n";
-
-    cout << "starting weight data" << endl;
-    array2D<float> weights = get_dense_weights(3, 5, normal_dist, generator);
-    print_weights(weights);
-    vector<float> flattened_weights = flatten_weights(weights);
-    cout << "flattened weight size " << flattened_weights.size() << endl;
-    //print_vec(flattened_filters);
-    //float* filter_arr = flattened_filters.data();
-    //print_arr(filter_arr, flattened_filters.size());
-    cout << "ending weight data\n\n\n";
-
-    cout << "starting bias data" << endl;
-    vector<float> bias = get_bias(5, normal_dist, generator);
-    print_vec(bias);
-    cout << "flattened bias size " << bias.size() << endl;
-    //print_vec(flattened_filters);
-    //float* filter_arr = flattened_filters.data();
-    //print_arr(filter_arr, flattened_filters.size());
-    cout << "ending bias data\n\n\n";
-
-    vector<float> all_vec;
-    all_vec.reserve(flattened_images.size() * flattened_filters.size() * flattened_weights.size() * bias.size());
-    all_vec.insert( all_vec.end(), flattened_images.begin(), flattened_images.end() );
-    all_vec.insert( all_vec.end(), flattened_filters.begin(), flattened_filters.end() );
-    all_vec.insert( all_vec.end(), flattened_weights.begin(), flattened_weights.end() );
-    all_vec.insert( all_vec.end(), bias.begin(), bias.end() );
-    
-    return all_vec;
+void print_from_thread(string msg, int thread_id) {
+    lock_guard<mutex> guard(cout_mutex);
+    cout << "thread " << thread_id << ": " << msg << endl;
 }
 
-int send_vec(float* all_vec_arr, int vec_size, int port) {
+void print_buf(float* buf, int thread_id, int buf_len) {
+    lock_guard<mutex> guard(cout_mutex);
+    cout << "thread " << thread_id << ": " << "printing buf" << endl;
+    for(int i = 0; i < buf_len; i++)
+        cout << "thread " << thread_id << ": " << buf[i] << endl;
+}
+
+void add_grads(array2D<float> &thread_dW, vector<float> &thread_dB) {
+    lock_guard<mutex> guard(grad_mutex);
+    for(int i = 0; i < DENSE_FIRST_OUT; i++) {
+        dB[i] += thread_dB[i];
+        //cout << "dB " << dB[i] << endl;
+        for(int j = 0; j < DENSE_FIRST_IN; j++) {
+            dW[i][j] += thread_dW[i][j];
+            //cout << "dW " << dW[i][j] << endl;
+        }
+    }
+}
+
+void read_buf(float *buf, array2D<float> &thread_dW, vector<float> &thread_dB) {
+    int weight_start = 0;
+    int weight_end = DENSE_FIRST_OUT * DENSE_FIRST_IN;
+    int bias_start = weight_end;
+    int weight_idx = weight_start;
+    for(int i = 0; i < DENSE_FIRST_OUT; i++)
+        for(int j = 0; j < DENSE_FIRST_IN; j++)
+            thread_dW[i][j] = buf[weight_idx++];
+    assert(weight_idx == bias_start);
+    
+    int bias_idx = bias_start;
+    for(int i = 0; i < BIAS_DIM; i++)
+        thread_dB[i] = buf[bias_idx++];
+}
+
+int send_vec(float* all_vec_arr, int vec_size, int port, int thread_id) {
     int sock = 0, valread;
     struct sockaddr_in serv_addr;
     float buffer[19] = {0};
@@ -238,9 +239,76 @@ int send_vec(float* all_vec_arr, int vec_size, int port) {
             return -1;
     }            
     send(sock , all_vec_arr , vec_size * 4 , 0 ); // 3rd arg is length in bytes, float is 4 bytes
-    printf("Hello message sent\n");
+    print_from_thread("Hello message sent", thread_id);
     valread = read( sock , buffer, buf_len);
-    printf("%s\n",buffer );
+    print_buf(buffer, thread_id, buf_len / 4);
+
+    array2D<float> thread_dW(DENSE_FIRST_OUT, vector<float>(DENSE_FIRST_IN, 0));
+    vector<float> thread_dB(BIAS_DIM, 0);
+    read_buf(buffer, thread_dW, thread_dB);
+    add_grads(thread_dW, thread_dB);
+    //printf("%s\n",buffer );
+}
+
+void print_grads() {
+    cout << "printing global dW" << endl;
+    for(int i = 0; i < DENSE_FIRST_OUT; i++)
+        for(int j = 0; j < DENSE_FIRST_IN; j++)
+            cout << dW[i][j] << endl;
+    
+    cout << "printing global dB" << endl;
+    for(int i = 0; i < BIAS_DIM; i++)
+        cout << dB[i] << endl;
+}
+
+vector<float> get_vec(normal_distribution<float> &normal_dist, default_random_engine &generator) {
+    cout << "starting image data" << endl;
+    array4D<float> images = get_images(NUM_IMAGES, normal_dist, generator);
+    print_images(images);
+    vector<float> flattened_images = flatten_images(images);
+    cout << "flattened image size " << flattened_images.size() << endl;
+    //print_vec(flattened_filters);
+    //float* filter_arr = flattened_filters.data();
+    //print_arr(filter_arr, flattened_filters.size());
+    cout << "ending image data\n\n\n";
+
+    cout << "starting filter data" << endl;
+    array4D<float> filters = get_filter_weights(NUM_FILTERS, FILTER_CHANNELS, FILTER_DIM, normal_dist, generator);
+    print_filters(filters);
+    vector<float> flattened_filters = flatten_filters(filters);
+    cout << "flattened filter size " << flattened_filters.size() << endl;
+    //print_vec(flattened_filters);
+    //float* filter_arr = flattened_filters.data();
+    //print_arr(filter_arr, flattened_filters.size());
+    cout << "ending filter data\n\n\n";
+
+    cout << "starting weight data" << endl;
+    array2D<float> weights = get_dense_weights(DENSE_FIRST_IN, DENSE_FIRST_OUT, normal_dist, generator);
+    print_weights(weights);
+    vector<float> flattened_weights = flatten_weights(weights);
+    cout << "flattened weight size " << flattened_weights.size() << endl;
+    //print_vec(flattened_filters);
+    //float* filter_arr = flattened_filters.data();
+    //print_arr(filter_arr, flattened_filters.size());
+    cout << "ending weight data\n\n\n";
+
+    cout << "starting bias data" << endl;
+    vector<float> bias = get_bias(BIAS_DIM, normal_dist, generator);
+    print_vec(bias);
+    cout << "flattened bias size " << bias.size() << endl;
+    //print_vec(flattened_filters);
+    //float* filter_arr = flattened_filters.data();
+    //print_arr(filter_arr, flattened_filters.size());
+    cout << "ending bias data\n\n\n";
+
+    vector<float> all_vec;
+    all_vec.reserve(flattened_images.size() * flattened_filters.size() * flattened_weights.size() * bias.size());
+    all_vec.insert( all_vec.end(), flattened_images.begin(), flattened_images.end() );
+    all_vec.insert( all_vec.end(), flattened_filters.begin(), flattened_filters.end() );
+    all_vec.insert( all_vec.end(), flattened_weights.begin(), flattened_weights.end() );
+    all_vec.insert( all_vec.end(), bias.begin(), bias.end() );
+    
+    return all_vec;
 }
    
 int main(int argc, char const *argv[])
@@ -249,14 +317,18 @@ int main(int argc, char const *argv[])
     default_random_engine generator;
 
     for(int i = 0; i < 2; i++) {
-        vector<float> all_vec = get_vec(normal_dist, generator);
-        float* all_vec_arr = all_vec.data();
-        dW = array2D<float>(5, vector<float>(3, 0));
-        dB = vector<float>(4, 0);
-        thread t1(send_vec, all_vec.size(), 8080);
-        thread t2(send_vec, all_vec.size(), 8081);
+        vector<float> all_vec_t1 = get_vec(normal_dist, generator);
+        vector<float> all_vec_t2 = get_vec(normal_dist, generator);
+        float* all_vec_t1_arr = all_vec_t1.data();
+        float* all_vec_t2_arr = all_vec_t2.data();
+        dW = array2D<float>(DENSE_FIRST_OUT, vector<float>(DENSE_FIRST_IN, 0));
+        dB = vector<float>(BIAS_DIM, 0);
+        thread t1(send_vec, all_vec_t1_arr, all_vec_t1.size(), 8080, 1);
+        thread t2(send_vec, all_vec_t2_arr, all_vec_t2.size(), 8081, 2);
         t1.join();
         t2.join();
+        cout << "printing grads iteration " << i << endl;
+        print_grads();
     }
     
     return 0;

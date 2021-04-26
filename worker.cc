@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <netinet/in.h>
 #include <string.h>
-#include <iostream>
 #include "cnn.h"
 
 using std::cout;
@@ -84,6 +83,25 @@ void read_buf(float* buf, array4D<float> &images, array4D<float> &filters, array
     cout << "done printing bias\n\n\n";
 }
 
+vector<float> get_grads(array2D<float> &dW, vector<float> &dB, normal_distribution<float> &normal_dist, default_random_engine &generator) {
+    vector<float> all_grads((DENSE_FIRST_IN * DENSE_FIRST_OUT) + BIAS_DIM);
+    int all_idx = 0;
+    cout << "printing dW" << endl;
+    for(int i = 0; i < DENSE_FIRST_OUT; i++)
+        for(int j = 0; j < DENSE_FIRST_IN; j++) {
+            dW[i][j] = normal_dist(generator);
+            all_grads[all_idx++] = dW[i][j];
+            cout << dW[i][j] << endl;
+        }
+    
+    for(int i = 0; i < BIAS_DIM; i++) {
+        dB[i] = normal_dist(generator);
+        all_grads[all_idx++] = dB[i];
+        cout << dB[i] << endl;
+    }
+    return all_grads;
+}
+
 int main(int argc, char const *argv[])
 {
     int server_fd, new_socket, valread;
@@ -91,6 +109,7 @@ int main(int argc, char const *argv[])
     int opt = 1;
     int addrlen = sizeof(address);
     int port = atoi(argv[1]);
+    int seed = atoi(argv[2]);
     cout << "port " << port << endl;
     // Creating socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
@@ -120,6 +139,10 @@ int main(int argc, char const *argv[])
     int buf_len = NUM_IMAGES * TEST_IMAGE_DIM * TEST_IMAGE_DIM * DENSE_FIRST_IN * DENSE_FIRST_OUT * NUM_FILTERS * FILTER_CHANNELS * FILTER_DIM * FILTER_DIM * BIAS_DIM;    
     int loop_idx = 0;
     char* hello;
+
+    normal_distribution<float> normal_dist = normal_distribution<float>(0, 1);
+    default_random_engine generator(seed);
+
     while(true) {        
         float buffer[NUM_IMAGES * TEST_IMAGE_DIM * TEST_IMAGE_DIM * DENSE_FIRST_IN * DENSE_FIRST_OUT * NUM_FILTERS * FILTER_CHANNELS * FILTER_DIM * FILTER_DIM * BIAS_DIM] = {0};
         cout << "reading socket loop_idx: " << loop_idx << endl;
@@ -148,9 +171,13 @@ int main(int argc, char const *argv[])
         vector<vector<float>> weights(DENSE_FIRST_OUT, vector<float>(DENSE_FIRST_IN));
         vector<float> bias(BIAS_DIM);
         read_buf(buffer, images, filters, weights, bias);
-
-        send(new_socket , hello , strlen(hello) , 0 );
-        printf("Hello message sent\n");
+        
+        vector<float> dB(BIAS_DIM);
+        vector<vector<float>> dW(DENSE_FIRST_OUT, vector<float>(DENSE_FIRST_IN));
+        vector<float> all_grads = get_grads(dW, dB, normal_dist, generator);
+        float* all_grads_arr = all_grads.data();
+        send(new_socket , all_grads_arr , all_grads.size() * 4 , 0 );
+        printf("gradients sent\n");
         loop_idx++;
     }
     return 0;
