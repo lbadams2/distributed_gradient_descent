@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/types.h>
+#include <netdb.h>
 #include <unistd.h>
 #include <string.h>
 #include <string>
@@ -9,6 +12,7 @@
 #include <iostream>
 #include <thread>
 #include <mutex>
+#include <chrono>
 
 using std::cout;
 using std::endl;
@@ -211,7 +215,7 @@ void read_buf(float *buf, array2D<float> &thread_dW, vector<float> &thread_dB) {
         thread_dB[i] = buf[bias_idx++];
 }
 
-int send_vec(float* all_vec_arr, int vec_size, int port, int thread_id) {
+int send_vec(float* all_vec_arr, int vec_size, const char* ip_address, int port, int thread_id) {
     int sock = 0, valread;
     struct sockaddr_in serv_addr;
     float buffer[19] = {0};
@@ -220,7 +224,7 @@ int send_vec(float* all_vec_arr, int vec_size, int port, int thread_id) {
     serv_addr.sin_port = htons(port);
        
     // Convert IPv4 and IPv6 addresses from text to binary form
-    if(inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr)<=0) 
+    if(inet_pton(AF_INET, ip_address, &serv_addr.sin_addr)<=0) 
     {
         printf("\nInvalid address/ Address not supported \n");
         return -1;
@@ -248,6 +252,7 @@ int send_vec(float* all_vec_arr, int vec_size, int port, int thread_id) {
     read_buf(buffer, thread_dW, thread_dB);
     add_grads(thread_dW, thread_dB);
     //printf("%s\n",buffer );
+    return 0;
 }
 
 void print_grads() {
@@ -310,11 +315,34 @@ vector<float> get_vec(normal_distribution<float> &normal_dist, default_random_en
     
     return all_vec;
 }
+
+string resolve_host(const char* host_name) {
+    struct hostent *host_entry;
+    const char *IPbuffer;
+
+    host_entry = gethostbyname(host_name);
+    IPbuffer = inet_ntoa(*((struct in_addr*)host_entry->h_addr_list[0]));    
+    return IPbuffer;
+}
    
 int main(int argc, char const *argv[])
 {       
     normal_distribution<float> normal_dist = normal_distribution<float>(0, 1);
     default_random_engine generator;
+
+    cout << "sleeping for 5 seconds to let workers start" << endl;
+    std::chrono::milliseconds timespan(5000);
+    std::this_thread::sleep_for(timespan);
+
+    const char* hostname_1 = "grad_calc_1";
+    const char* hostname_2 = "grad_calc_2";
+
+    string ip_1_str = resolve_host(hostname_1);
+    string ip_2_str = resolve_host(hostname_2);
+    const char * ip_1 = ip_1_str.c_str();
+    const char * ip_2 = ip_2_str.c_str();
+    cout << "grad_calc_1 IP: " << ip_1 << endl; 
+    cout << "grad_calc_2 IP: " << ip_2 << endl;
 
     for(int i = 0; i < 2; i++) {
         vector<float> all_vec_t1 = get_vec(normal_dist, generator);
@@ -323,8 +351,8 @@ int main(int argc, char const *argv[])
         float* all_vec_t2_arr = all_vec_t2.data();
         dW = array2D<float>(DENSE_FIRST_OUT, vector<float>(DENSE_FIRST_IN, 0));
         dB = vector<float>(BIAS_DIM, 0);
-        thread t1(send_vec, all_vec_t1_arr, all_vec_t1.size(), 8080, 1);
-        thread t2(send_vec, all_vec_t2_arr, all_vec_t2.size(), 8081, 2);
+        thread t1(send_vec, all_vec_t1_arr, all_vec_t1.size(), ip_1, 8080, 1);
+        thread t2(send_vec, all_vec_t2_arr, all_vec_t2.size(), ip_2, 8081, 2);
         t1.join();
         t2.join();
         cout << "printing grads iteration " << i << endl;

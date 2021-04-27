@@ -1,0 +1,17 @@
+version: "3.9"
+services:
+    grad_calc_1:
+        image: worker:1
+        ports: 
+            - "8080:8080"
+        command: 10 8080
+    grad_calc_2:
+        image: worker:1
+        ports: 
+            - "8081:8081"
+        command: 20 8081
+    optimizer:
+        image: optimizer:1
+        depends_on: 
+            - grad_calc_1
+            - grad_calc_2

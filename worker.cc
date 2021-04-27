@@ -7,6 +7,8 @@
 #include <string.h>
 #include "cnn.h"
 
+//#define PORT 8080
+
 using std::cout;
 using std::endl;
 
@@ -108,9 +110,12 @@ int main(int argc, char const *argv[])
     struct sockaddr_in address;
     int opt = 1;
     int addrlen = sizeof(address);
-    int port = atoi(argv[1]);
-    int seed = atoi(argv[2]);
-    cout << "port " << port << endl;
+    int seed = atoi(argv[1]);
+    int port = atoi(argv[2]);
+    cout << "printing seed" << endl;
+    cout << "seed is " << seed << endl;
+    cout << "port arg is " << port << endl;
+    //cout << "port " << PORT << endl;
     // Creating socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
     {

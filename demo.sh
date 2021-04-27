@@ -1,0 +1,16 @@
+#!/bin/bash
+
+build_images() {
+    docker build -t worker:1 -f grad_calc.dockerfile .
+    docker run --rm -e port=8080 -e seed=10 worker:1
+
+    docker build -t optimizer:1 -f optimizer.dockerfile .
+    docker run --rm optimizer:1
+}
+
+docker-compose up
+docker-compose logs -t -f grad_calc_1
+docker-compose logs -t -f grad_calc_2
+docker-compose logs -t -f optimizer
+docker-compose down
+docker-compose rm
