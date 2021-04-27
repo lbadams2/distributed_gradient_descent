@@ -34,8 +34,10 @@ public:
     vector<float>& get_dB();
     array4D<float>& get_filters();
     vector<float>& get_bias();
+    vector<float>& get_flattened_filter();
 private:
     array4D<float> filters;
+    vector<float> flattened_filters;
     vector<float> bias;
     int num_filters;
     int num_channels;
@@ -55,12 +57,14 @@ public:
     vector<float> forward(vector<float> &in);
     vector<float> backward(vector<float> &dprev, bool reset_grads);
     int get_in_dim();
+    vector<float>& get_flattened_weights();
     array2D<float>& get_dW();
     vector<float>& get_dB();
     array2D<float>& get_weights();
     vector<float>& get_bias();
 private:
     array2D<float> weights;
+    vector<float> flattened_weights;
     array2D<float> weights_T; // update this after each mini batch, after adam is run
     vector<float> bias;
     array2D<float> dW;

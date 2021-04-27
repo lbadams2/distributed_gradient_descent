@@ -131,12 +131,14 @@ void Model::adam() {
     vector<float> conv_first_dB = conv_layers.at(0).get_dB();
 
     array4D<float>& conv_first_filters = conv_layers.at(0).get_filters();
+    vector<float>& conv_first_filters_flattened = conv_layers.at(0).get_flattened_filter();
     vector<float>& conv_first_bias = conv_layers.at(0).get_bias();
 
     int num_filters = conv_first_dF.size();
     int num_channels = conv_first_dF[0].size();
     int filter_dim = conv_first_dF[0][0].size();
     float epsilon = .0000001; // to prevent division by zero
+    int vec_idx = 0;
     for(int f = 0; f < num_filters; f++) {
         m_db1[f] = beta1*m_db1[f] + (1 - beta1) * (conv_first_dB[f] / batch_size);
         v_db1[f] = beta2*v_db1[f] + (1 - beta2) * pow(conv_first_dB[f] / batch_size, 2);
@@ -148,6 +150,7 @@ void Model::adam() {
                     m_df1[f][n][i][j] = beta1*m_df1[f][n][i][j] + (1 - beta1) * (conv_first_dF[f][n][i][j] / batch_size);
                     v_df1[f][n][i][j] = beta2*v_df1[f][n][i][j] + (1 - beta2) * pow(conv_first_dF[f][n][i][j] / batch_size, 2);
                     conv_first_filters[f][n][i][j] -= learning_rate * m_df1[f][n][i][j]/sqrt(v_df1[f][n][i][j] + epsilon);
+                    conv_first_filters_flattened[vec_idx++] = conv_first_filters[f][n][i][j];
                 }
             }
     }
@@ -156,8 +159,10 @@ void Model::adam() {
     vector<float> conv_second_dB = conv_layers.at(1).get_dB();
     
     array4D<float>& conv_second_filters = conv_layers.at(1).get_filters();
+    vector<float>& conv_second_filters_flattened = conv_layers.at(1).get_flattened_filter();
     vector<float>& conv_second_bias = conv_layers.at(1).get_bias();
     num_channels = conv_second_dF[0].size();
+    vec_idx = 0;
     for(int f = 0; f < num_filters; f++) {
         m_db2[f] = beta1*m_db2[f] + (1 - beta1) * (conv_second_dB[f] / batch_size);
         v_db2[f] = beta2*v_db2[f] + (1 - beta2) * pow(conv_second_dB[f] / batch_size, 2);
@@ -169,6 +174,7 @@ void Model::adam() {
                     m_df2[f][n][i][j] = beta1*m_df2[f][n][i][j] + (1 - beta1) * (conv_second_dF[f][n][i][j] / batch_size);
                     v_df2[f][n][i][j] = beta2*v_df2[f][n][i][j] + (1 - beta2) * pow(conv_second_dF[f][n][i][j] / batch_size, 2);
                     conv_second_filters[f][n][i][j] -= learning_rate * m_df2[f][n][i][j]/sqrt(v_df2[f][n][i][j] + epsilon);
+                    conv_second_filters_flattened[vec_idx++] = conv_second_filters[f][n][i][j];
                 }
             }
     }
@@ -179,10 +185,12 @@ void Model::adam() {
     vector<float> dense_first_dB = dense_layers.at(0).get_dB(); // size is out_dim
 
     array2D<float>& dense_first_weights = dense_layers.at(0).get_weights();
+    vector<float>& dense_first_weights_flattened = dense_layers.at(0).get_flattened_weights();
     vector<float>& dense_first_bias = dense_layers.at(0).get_bias(); // size is out_dim
 
     int dense_first_out_dim = dense_first_dW.size();
     int dense_first_in_dim = dense_first_dW[0].size();
+    vec_idx = 0;
     for(int i = 0; i < dense_first_out_dim; i++) {
         m_db3[i] = beta1*m_db3[i] + (1 - beta1) * (dense_first_dB[i] / batch_size);
         v_db3[i] = beta2*v_db3[i] + (1 - beta2) * pow(dense_first_dB[i] / batch_size, 2);
@@ -191,6 +199,7 @@ void Model::adam() {
             m_dw1[i][j] = beta1*m_dw1[i][j] + (1 - beta1) * (dense_first_dW[i][j] / batch_size);
             v_dw1[i][j] = beta2*v_dw1[i][j] + (1 - beta2) * pow(dense_first_dW[i][j] / batch_size, 2);
             dense_first_weights[i][j] -= learning_rate * m_dw1[i][j]/sqrt(v_dw1[i][j] + epsilon);
+            dense_first_weights_flattened[vec_idx++] = dense_first_weights[i][j];
         }
     }
 
@@ -199,7 +208,9 @@ void Model::adam() {
     vector<float> dense_second_dB = dense_layers.at(1).get_dB(); // size is out_dim
 
     array2D<float>& dense_second_weights = dense_layers.at(1).get_weights();
+    vector<float>& dense_second_weights_flatttened = dense_layers.at(1).get_flattened_weights();
     vector<float>& dense_second_bias = dense_layers.at(1).get_bias(); // size is out_dim
+    vec_idx = 0;
     for(int i = 0; i < NUM_LABELS; i++) {
         m_db4[i] = beta1*m_db4[i] + (1 - beta1) * (dense_second_dB[i] / batch_size);
         v_db4[i] = beta2*v_db4[i] + (1 - beta2) * pow(dense_second_dB[i] / batch_size, 2);
@@ -208,6 +219,7 @@ void Model::adam() {
             m_dw2[i][j] = beta1*m_dw2[i][j] + (1 - beta1) * (dense_second_dW[i][j] / batch_size);
             v_dw2[i][j] = beta2*v_dw2[i][j] + (1 - beta2) * pow(dense_second_dW[i][j] / batch_size, 2);
             dense_second_weights[i][j] -= learning_rate * m_dw2[i][j]/sqrt(v_dw2[i][j] + epsilon);
+            dense_second_weights_flatttened[vec_idx++] = dense_second_weights[i][j];
         }
     }
 }

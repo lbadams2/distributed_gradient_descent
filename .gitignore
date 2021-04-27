@@ -7,3 +7,5 @@ load_image
 train
 unit_tests
 *.dSYM
+worker
+master

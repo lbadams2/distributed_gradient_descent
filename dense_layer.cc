@@ -79,6 +79,21 @@ vector<float> Dense_Layer::backward(vector<float> &dprev, bool reset_grads)
     return d_orig_in;
 }
 
+vector<float>& Dense_Layer::get_flattened_weights() {
+    return flattened_weights;
+}
+
+/*
+vector<float>& Dense_Layer::get_flattened_weights() {
+    vector<float> flattened(out_dim * in_dim);
+    int vec_idx = 0;
+    for(int i = 0; i < out_dim; i++)
+        for(int j = 0; j < in_dim; j++)
+            flattened[vec_idx++] = weights[i][j];
+    return flattened;
+}
+*/
+
 int Dense_Layer::get_in_dim() {
     return in_dim;
 }

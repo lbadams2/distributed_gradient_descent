@@ -209,6 +209,23 @@ array3D<float> Conv_Layer::forward(array3D<float> &image)
     return out;
 }
 
+vector<float>& Conv_Layer::get_flattened_filter() {
+    return flattened_filters;
+}
+
+/*
+vector<float>& Conv_Layer::get_flattened_filter() {
+    vector<float> flattened(num_filters * num_channels * filter_dim * filter_dim);
+    int vec_idx = 0;
+    for(int f = 0; f < num_filters; f++)
+        for(int n = 0; n < num_channels; n++)
+            for(int i = 0; i < filter_dim; i++)
+                for(int j = 0; j < filter_dim; j++)
+                    flattened[vec_idx++] = filters[f][n][i][j];
+    return flattened;
+}
+*/
+
 int Conv_Layer::get_out_dim()
 {
     return out_dim;
