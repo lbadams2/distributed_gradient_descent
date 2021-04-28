@@ -25,20 +25,6 @@ const char* worker2_hostname = "grad_calc_2";
 const char* worker3_hostname = "grad_calc_3";
 const char* worker4_hostname = "grad_calc_4";
 
-/*
-vector<float> flatten_images(array4D<float> &images) {
-    int num_images = images.size();
-    int images_size = num_images * IMAGE_DIM * IMAGE_DIM;
-    vector<float> flattened(images_size);
-    int vec_idx = 0;
-    for(int n = 0; n < num_images; n++)
-        for(int i = 0; i < IMAGE_DIM; i++)
-            for(int j = 0; j < IMAGE_DIM; j++)
-                flattened[vec_idx++] = images[n][0][i][j];
-    return flattened;
-}
-*/
-
 void init_grads(int num_filters, int image_channels, int filter_dim, int dense_first_in, int dense_first_out) {
     first_dF = vector<vector<vector<vector<float> > > >(num_filters, vector<vector<vector<float> > >(image_channels, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
     first_conv_dB = vector<float>(num_filters, 0); // 1 bias per filter
@@ -59,7 +45,8 @@ array2D<float> create_batches(vector<float> &images, vector<uint8_t> &labels, ar
     int image_per_worker = worker_labels[0].size();
 
     int num_worker_labels = num_worker_images;
-    int total_labels = num_worker_labels * image_per_worker;
+    assert(num_worker_labels == images.size() / image_per_worker); // 60000 / 8
+    int total_labels = num_worker_labels * image_per_worker; // should be 60000
 
     int vec_idx = 0;
     int label_idx = 0;
@@ -74,18 +61,41 @@ array2D<float> create_batches(vector<float> &images, vector<uint8_t> &labels, ar
     return worker_images;
 }
 
+void print_cnn_data(Model &cnn, vector<float>& first_conv_bias_flat, vector<float>& second_conv_filter_flat, vector<float>& second_dense_weight_flat) {
+    vector<Conv_Layer> &conv_layers = cnn.get_conv_layers();
+    vector<Dense_Layer> &dense_layers = cnn.get_dense_layers();
+
+    Conv_Layer& first_conv_layer = conv_layers.at(0);
+    Conv_Layer& second_conv_layer = conv_layers.at(1);
+    Dense_Layer& second_dense_layer = dense_layers.at(1);
+
+    vector<float>& first_conv_bias = first_conv_layer.get_bias();
+    assert(first_conv_bias[3] == first_conv_bias_flat[3]);
+
+    array4D<float>& second_dF = second_conv_layer.get_dF();
+    assert(second_conv_filter_flat[1] == second_dF[0][0][0][1]);
+
+    cout << "printing first few values of second conv filter" << endl;
+    cout << second_conv_filter_flat[0] << " " << second_conv_filter_flat[1] << " " << second_conv_filter_flat[2] << endl;
+
+    cout << "printing first few values of second dense weights" << endl;
+    cout << second_dense_weight_flat[0] << " " << second_dense_weight_flat[1] << " " << second_dense_weight_flat[2] << endl;
+}
+
 vector<float> get_worker_data(vector<float> &flattened_images, vector<float> &labels, Model &cnn) {
     vector<Conv_Layer> &conv_layers = cnn.get_conv_layers();
-    vector<float> first_conv_filter = conv_layers[0].get_flattened_filters();
-    vector<float> first_conv_bias = conv_layers[0].get_bias();
-    vector<float> second_conv_filter = conv_layers[1].get_flattened_filters();
-    vector<float> second_conv_bias = conv_layers[1].get_bias();
+    vector<float> &first_conv_filter = conv_layers[0].get_flattened_filters();
+    vector<float> &first_conv_bias = conv_layers[0].get_bias();
+    vector<float> &second_conv_filter = conv_layers[1].get_flattened_filters();
+    vector<float> &second_conv_bias = conv_layers[1].get_bias();
 
     vector<Dense_Layer> &dense_layers = cnn.get_dense_layers();
-    vector<float> first_dense_weights = dense_layers[0].get_flattened_weights();
-    vector<float> first_dense_bias = dense_layers[0].get_bias();
-    vector<float> second_dense_weights = dense_layers[1].get_flattened_weights();
-    vector<float> second_dense_bias = dense_layers[1].get_bias();
+    vector<float> &first_dense_weights = dense_layers[0].get_flattened_weights();
+    vector<float> &first_dense_bias = dense_layers[0].get_bias();
+    vector<float> &second_dense_weights = dense_layers[1].get_flattened_weights();
+    vector<float> &second_dense_bias = dense_layers[1].get_bias();
+
+    print_cnn_data(cnn, first_conv_bias, second_conv_filter, second_dense_weights);
 
     vector<float> all_data;
     all_data.reserve(flattened_images.size() + labels.size() + first_conv_filter.size() + first_conv_bias.size() + second_conv_filter.size() + second_conv_bias.size() + first_dense_weights.size() + first_dense_bias.size() + second_dense_weights.size() + second_dense_bias.size());
@@ -103,6 +113,8 @@ vector<float> get_worker_data(vector<float> &flattened_images, vector<float> &la
     all_data.insert( all_data.end(), second_dense_weights.begin(), second_dense_weights.end() );
     all_data.insert( all_data.end(), second_dense_bias.begin(), second_dense_bias.end() );
 
+    cout << "printing some values of buffer sent to grad calc, buffer is size " << all_data.size() << endl;
+    cout << all_data[0] << " " << all_data[100] << " " << all_data[200] << " " << all_data[1000] << endl;
     return all_data;
 }
 
@@ -115,7 +127,61 @@ string resolve_host(const char* host_name) {
     return IPbuffer;
 }
 
-float read_buf(float* grads, array4D<float> &thread_first_dF, vector<float> &thread_first_conv_dB, array4D<float> &thread_second_dF, vector<float> &thread_second_conv_dB, array2D<float> &thread_first_dW, vector<float> &thread_first_dense_dB, array2D<float> &thread_second_dW, vector<float> &thread_second_dense_dB) {
+void print_buf(int thread_id, float* buf) {
+    lock_guard<mutex> guard(cout_mutex);
+    cout << "thread " << thread_id << ": printing some values received from grad calc" << endl;
+    cout << buf[0] << " " << buf[20] << " " << buf[40] << " " << buf[80] << endl;
+}
+
+void print_thread_grads(int thread_id, array4D<float> thread_first_dF, vector<float> thread_second_conv_dB, array2D<float> thread_first_dW) {
+    lock_guard<mutex> guard(cout_mutex);
+    cout << "thread " << thread_id << ": printing some vals from first conv dF" << endl;
+    cout << thread_first_dF[1][0][1][2] << " " << thread_first_dF[2][0][2][2] << " " << thread_first_dF[3][0][1][1] << " " << thread_first_dF[6][0][2][2] << endl;
+
+    cout << "thread " << thread_id << ": printing some vals from second conv dB" << endl;
+    cout << thread_second_conv_dB[0] << " " << thread_second_conv_dB[2] << " " << thread_second_conv_dB[3] << endl;
+
+    cout << "thread " << thread_id << ": printing some vals from first dense dW" << endl;
+    cout << thread_first_dW[10][10] << " " << thread_first_dW[30][20] << " " << thread_first_dW[60][30] << " " << thread_first_dW[20][80] << endl;
+}
+
+void print_global_grads(Model& cnn) {
+    vector<Conv_Layer>& conv_layers = cnn.get_conv_layers();
+    Conv_Layer& first_conv_layer = conv_layers.at(0);
+    
+    array4D<float>& local_first_dF = first_conv_layer.get_dF();
+    cout << "printing some vals from first conv dF" << endl;
+    cout << local_first_dF[0][0][0][0] << " " << local_first_dF[1][0][0][1] << " " << local_first_dF[2][0][1][0] << " " << local_first_dF[3][0][1][1] << endl;
+
+    cout << "printing same vals from global dF" << endl;
+    cout << first_dF[0][0][0][0] << " " << first_dF[1][0][0][1] << " " << first_dF[2][0][1][0] << " " << first_dF[3][0][1][1] << endl;
+    
+    vector<float>& local_first_conv_dB = first_conv_layer.get_dB();
+    cout << "printing some vals from first conv dB" << endl;
+    cout << local_first_conv_dB[0] << " " << local_first_conv_dB[1] << " " << local_first_conv_dB[2] << " " << local_first_conv_dB[3] << endl;
+
+    cout << "printing same vals from global first conv dB" << endl;
+    cout << first_conv_dB[0] << " " << first_conv_dB[1] << " " << first_conv_dB[2] << " " << first_conv_dB[3] << endl;
+
+    vector<Dense_Layer>& dense_layers = cnn.get_dense_layers();
+    Dense_Layer& second_dense_layer = dense_layers.at(1);
+    
+    array2D<float>& local_second_dW = second_dense_layer.get_dW();    
+    cout << "printing some vals from second dense dW" << endl;
+    cout << local_second_dW[0][5] << " " << local_second_dW[1][15] << " " << local_second_dW[2][25] << " " << local_second_dW[3][35] << endl;
+
+    cout << "printing same vals from second dense dW" << endl;
+    cout << second_dW[0][5] << " " << second_dW[1][15] << " " << second_dW[2][25] << " " << second_dW[3][35] << endl;
+
+    vector<float>& local_second_dense_dB = second_dense_layer.get_dB();
+    cout << "printing some vals from second dense dB" << endl;
+    cout << local_second_dense_dB[0] << " " << local_second_dense_dB[1] << " " << local_second_dense_dB[2] << " " << local_second_dense_dB[3] << endl;
+
+    cout << "printing some vals from second dense dB" << endl;
+    cout << second_dense_dB[0] << " " << second_dense_dB[1] << " " << second_dense_dB[2] << " " << second_dense_dB[3] << endl;
+}
+
+float read_buf(float* grads, array4D<float> &thread_first_dF, vector<float> &thread_first_conv_dB, array4D<float> &thread_second_dF, vector<float> &thread_second_conv_dB, array2D<float> &thread_first_dW, vector<float> &thread_first_dense_dB, array2D<float> &thread_second_dW, vector<float> &thread_second_dense_dB) {    
     int num_filters = thread_first_dF.size();
     int num_channels = thread_first_dF[0].size();
     int filter_dim = thread_first_dF[0][0].size();
@@ -243,6 +309,7 @@ int send_vec(float* all_vec_arr, int vec_size, const char* ip_address, int port,
     float buffer[105635];
     int buf_size = buf_len * 4;
     valread = read( sock , buffer, buf_size);
+    print_buf(thread_id, buffer);
 
     vector<vector<vector<vector<float> > > > thread_first_dF(num_filters, vector<vector<vector<float> > >(image_channels, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
     vector<float> thread_first_conv_dB(num_filters, 0); // 1 bias per filter
@@ -258,6 +325,8 @@ int send_vec(float* all_vec_arr, int vec_size, const char* ip_address, int port,
 
     float loss = read_buf(buffer, thread_first_dF, thread_first_conv_dB, thread_second_dF, thread_second_conv_dB, thread_first_dW, thread_first_dense_dB, thread_second_dW, thread_second_dense_dB);
     p.set_value(loss);
+
+    print_thread_grads(thread_id, thread_first_dF, thread_second_conv_dB, thread_first_dW);
 
     add_first_conv_grads(thread_first_dF, thread_first_conv_dB);
     add_second_conv_grads(thread_second_dF, thread_second_conv_dB);
@@ -279,13 +348,13 @@ int main(int argc, char const *argv[]) {
     
     int image_per_worker = batch_size / NUM_WORKERS;
     int pixels_per_worker = image_per_worker * IMAGE_DIM * IMAGE_DIM;
-    int num_worker_images = images.size() / pixels_per_worker;
+    int num_worker_images = images.size() / pixels_per_worker; // send one of these concatenated vectors (8 images concatenated) to each worker
     vector<vector<float> > worker_images(num_worker_images, vector<float>(pixels_per_worker));
 
     int num_worker_labels = num_worker_images;
     int total_labels = num_worker_labels * image_per_worker;
     assert(total_labels == images.size());
-    vector<vector<float> > worker_labels(num_worker_labels, vector<float>(image_per_worker));
+    vector<vector<float> > worker_labels(num_worker_labels, vector<float>(image_per_worker)); // concatenated vec of 8 labels sent to each worker
     create_batches(images, labels, worker_images, worker_labels);
 
     // num_filters is number of filters in each conv layer, filter dim is size of filter squares
@@ -294,9 +363,10 @@ int main(int argc, char const *argv[]) {
 
     // batch_size just used by adam
     Model cnn(filter_dim, pool_dim, num_filters, pool_stride, conv_stride, dense_first_out_dim, learning_rate, beta1, beta2, batch_size);
-    int dense_first_in = cnn.get_dense_layers()[0].get_in_dim();    
-
-    float batch_loss = 0;
+    
+    // num_filters * pool_output_dim * pool_output_dim;
+    // pool_output_dim = ((conv_dim - pool_kernel_size) / pool_stride) + 1;
+    int dense_first_in = cnn.get_dense_layers()[0].get_in_dim();     
 
     string ip_1_str = resolve_host(worker1_hostname);
     string ip_2_str = resolve_host(worker2_hostname);
@@ -307,10 +377,11 @@ int main(int argc, char const *argv[]) {
     const char * ip_3 = ip_3_str.c_str();
     const char * ip_4 = ip_4_str.c_str();
     
+    float batch_loss = 0;
     int batch_idx = 0;
     for(int n = 0; n < num_worker_images; n += NUM_WORKERS) {
         batch_loss = 0;
-        init_grads(num_filters, num_channels, filter_dim, dense_first_in, dense_first_out_dim);
+        init_grads(num_filters, num_channels, filter_dim, dense_first_in, dense_first_out_dim); // set global vectors to 0
         cout << "processing batch " << batch_idx << endl;
         vector<float> worker1_images = worker_images[n];
         vector<float> worker2_images = worker_images[n+1];
@@ -323,9 +394,9 @@ int main(int argc, char const *argv[]) {
         vector<float> worker4_labels = worker_labels[n+3];
 
         vector<float> worker1_data = get_worker_data(worker1_images, worker1_labels, cnn);
-        vector<float> worker2_data = get_worker_data(worker1_images, worker1_labels, cnn);
-        vector<float> worker3_data = get_worker_data(worker1_images, worker1_labels, cnn);
-        vector<float> worker4_data = get_worker_data(worker1_images, worker1_labels, cnn);
+        vector<float> worker2_data = get_worker_data(worker2_images, worker2_labels, cnn);
+        vector<float> worker3_data = get_worker_data(worker3_images, worker3_labels, cnn);
+        vector<float> worker4_data = get_worker_data(worker4_images, worker4_labels, cnn);
 
         promise<float> p1;
         auto f1 = p1.get_future();
@@ -362,6 +433,8 @@ int main(int argc, char const *argv[]) {
         cnn.get_dense_layers()[1].set_dW(second_dW);
         cnn.get_dense_layers()[0].set_dB(first_dense_dB);
         cnn.get_dense_layers()[1].set_dB(second_dense_dB);
+
+        print_global_grads(cnn);
         cnn.adam();
     }
 }

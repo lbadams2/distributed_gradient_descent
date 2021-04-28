@@ -1,6 +1,35 @@
 #include "cnn.h"
 #include "distributed.h"
 
+void print_cnn(Model &cnn) {
+    vector<Conv_Layer> &conv_layers = cnn.get_conv_layers();
+    Conv_Layer& second_conv_layer = conv_layers.at(1);
+    
+    array4D<float>& second_filters = second_conv_layer.get_filters();
+    cout << "printing some values from second conv filters" << endl;
+    cout << second_filters[0][1][0][1] << " " << second_filters[1][2][0][1] << " " << second_filters[2][3][2][1] << " " << second_filters[3][4][3][1] << endl;
+    
+    vector<float>& second_conv_bias = second_conv_layer.get_bias();
+    cout << "printing some values from second conv bias" << endl;
+    cout << second_conv_bias[0] << " " << second_conv_bias[1] << " " << second_conv_bias[2] << " " << second_conv_bias[3] << endl;
+
+    vector<Dense_Layer> &dense_layers = cnn.get_dense_layers();
+    Dense_Layer& first_dense_layer = dense_layers.at(0);
+
+    array2D<float>& first_weights = first_dense_layer.get_weights();
+    cout << "printing some values from first dense weights" << endl;
+    cout << first_weights[0][10] << " " << first_weights[5][20] << " " << first_weights[18][30] << " " << first_weights[31][50] << endl;
+
+    vector<float>& first_dense_bias = first_dense_layer.get_bias();
+    cout << "printing some values from first dense bias" << endl;
+    cout << first_dense_bias[0] << " " << first_dense_bias[10] << " " << first_dense_bias[20] << " " << first_dense_bias[80] << endl;
+}
+
+void print_grads(float* grads) {
+    cout << "printing some values sent to optimizer, same values it printed" << endl;
+    cout << grads[0] << " " << grads[20] << " " << grads[40] << " " << grads[80] << endl;
+}
+
 void read_buf(float* data, Model &cnn, array4D<float> &images, vector<float> &labels) {
     vector<Conv_Layer> &conv_layers = cnn.get_conv_layers();
     array4D<float> &first_conv_filters = conv_layers[0].get_filters();
@@ -96,6 +125,11 @@ vector<float> get_grads(Model &cnn, float batch_loss) {
     return all_grads;
 }
 
+void print_buf(float* buf) {
+    cout << "printing values received by optimizer, same values it printed before sending" << endl;
+    cout << buf[0] << " " << buf[100] << " " << buf[200] << " " << buf[1000] << endl;
+}
+
 int main(int argc, char const *argv[]) {
     int server_fd, new_socket, valread;
     struct sockaddr_in address;
@@ -138,7 +172,6 @@ int main(int argc, char const *argv[]) {
     int num_images = batch_size / NUM_WORKERS;
     int images_len = num_images * IMAGE_DIM * IMAGE_DIM;
     
-    //
     int buf_len = images_len + NUM_LABELS + FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN + SECOND_DENSE_DB_LEN;
     int buf_size = buf_len * 4;
     float* buffer = new float[buf_len];
@@ -156,11 +189,13 @@ int main(int argc, char const *argv[]) {
             exit(EXIT_FAILURE);
         }
         valread = read( new_socket , buffer, buf_size); // buf_len in bytes
-        //printf("%f\n",buffer );
-        //print_arr(buffer, 48);
+        print_buf(buffer);
+
         vector<vector<vector<vector<float> > > > images(num_images, vector<vector<vector<float> > >(IMAGE_CHANNELS, vector<vector<float> >(IMAGE_DIM, vector<float>(IMAGE_DIM, 0))));
         vector<float> labels(num_images, 0);
         read_buf(buffer, cnn, images, labels);
+        print_cnn(cnn);
+
         float image_loss = 0, batch_loss = 0;
         bool reset_grads = true;
         for(int i = 0; i < num_images; i++) {
@@ -177,6 +212,7 @@ int main(int argc, char const *argv[]) {
 
         vector<float> all_grads = get_grads(cnn, batch_loss);
         float* all_grads_arr = all_grads.data();
+        print_grads(all_grads_arr);
         send(new_socket , all_grads_arr , all_grads.size() * 4 , 0 );
         printf("gradients sent\n");
     }
