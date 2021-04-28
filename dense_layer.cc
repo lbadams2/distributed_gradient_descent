@@ -16,7 +16,7 @@ Dense_Layer::Dense_Layer(int in_dim, int out_dim) : in_dim(in_dim), out_dim(out_
         {
             float init_val = normal_dist(generator);
             weights[i][j] = init_val * .01;
-            flattened_weights[vec_idx++] = init_val;
+            flattened_weights[vec_idx++] = init_val * .01;
         }
     }
     this->weights = weights;

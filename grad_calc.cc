@@ -8,10 +8,12 @@ void print_cnn(Model &cnn) {
     array4D<float>& second_filters = second_conv_layer.get_filters();
     cout << "printing some values from second conv filters" << endl;
     cout << second_filters[0][1][0][1] << " " << second_filters[1][2][0][1] << " " << second_filters[2][3][2][1] << " " << second_filters[3][4][3][1] << endl;
+    cout << "\n\n";
     
     vector<float>& second_conv_bias = second_conv_layer.get_bias();
     cout << "printing some values from second conv bias" << endl;
     cout << second_conv_bias[0] << " " << second_conv_bias[1] << " " << second_conv_bias[2] << " " << second_conv_bias[3] << endl;
+    cout << "\n\n";
 
     vector<Dense_Layer> &dense_layers = cnn.get_dense_layers();
     Dense_Layer& first_dense_layer = dense_layers.at(0);
@@ -19,15 +21,18 @@ void print_cnn(Model &cnn) {
     array2D<float>& first_weights = first_dense_layer.get_weights();
     cout << "printing some values from first dense weights" << endl;
     cout << first_weights[0][10] << " " << first_weights[5][20] << " " << first_weights[18][30] << " " << first_weights[31][50] << endl;
+    cout << "\n\n";
 
     vector<float>& first_dense_bias = first_dense_layer.get_bias();
     cout << "printing some values from first dense bias" << endl;
     cout << first_dense_bias[0] << " " << first_dense_bias[10] << " " << first_dense_bias[20] << " " << first_dense_bias[80] << endl;
+    cout << "\n\n";
 }
 
 void print_grads(float* grads) {
     cout << "printing some values sent to optimizer, same values it printed" << endl;
     cout << grads[0] << " " << grads[20] << " " << grads[40] << " " << grads[80] << endl;
+    cout << "\n\n";
 }
 
 void read_buf(float* data, Model &cnn, array4D<float> &images, vector<float> &labels) {
@@ -92,7 +97,7 @@ void read_buf(float* data, Model &cnn, array4D<float> &images, vector<float> &la
             second_dense_weights[i][j] = data[buf_idx++];
     assert(buf_idx == (num_images * IMAGE_DIM * IMAGE_DIM) + num_images + FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN);
 
-    for(int i = 0; i < DENSE_FIRST_OUT; i++)
+    for(int i = 0; i < NUM_LABELS; i++)
         second_dense_bias[i] = data[buf_idx++];
     assert(buf_idx == (num_images * IMAGE_DIM * IMAGE_DIM) + num_images + FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN + SECOND_DENSE_DB_LEN);
 }
@@ -128,6 +133,7 @@ vector<float> get_grads(Model &cnn, float batch_loss) {
 void print_buf(float* buf) {
     cout << "printing values received by optimizer, same values it printed before sending" << endl;
     cout << buf[0] << " " << buf[100] << " " << buf[200] << " " << buf[1000] << endl;
+    cout << "\n\n";
 }
 
 int main(int argc, char const *argv[]) {
@@ -172,7 +178,7 @@ int main(int argc, char const *argv[]) {
     int num_images = batch_size / NUM_WORKERS;
     int images_len = num_images * IMAGE_DIM * IMAGE_DIM;
     
-    int buf_len = images_len + NUM_LABELS + FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN + SECOND_DENSE_DB_LEN;
+    int buf_len = images_len + num_images + FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN + SECOND_DENSE_DB_LEN;
     int buf_size = buf_len * 4;
     float* buffer = new float[buf_len];
     while(true) {

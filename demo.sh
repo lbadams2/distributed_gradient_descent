@@ -8,7 +8,7 @@ build_images() {
     docker run --rm optimizer:1
 }
 
-docker-compose up
+docker-compose up -d
 docker-compose logs -t -f grad_calc_1
 docker-compose logs -t -f grad_calc_2
 docker-compose logs -t -f grad_calc_3
