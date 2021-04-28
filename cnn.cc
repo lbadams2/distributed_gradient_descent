@@ -131,7 +131,7 @@ void Model::adam() {
     vector<float> conv_first_dB = conv_layers.at(0).get_dB();
 
     array4D<float>& conv_first_filters = conv_layers.at(0).get_filters();
-    vector<float>& conv_first_filters_flattened = conv_layers.at(0).get_flattened_filter();
+    vector<float>& conv_first_filters_flattened = conv_layers.at(0).get_flattened_filters();
     vector<float>& conv_first_bias = conv_layers.at(0).get_bias();
 
     int num_filters = conv_first_dF.size();
@@ -159,7 +159,7 @@ void Model::adam() {
     vector<float> conv_second_dB = conv_layers.at(1).get_dB();
     
     array4D<float>& conv_second_filters = conv_layers.at(1).get_filters();
-    vector<float>& conv_second_filters_flattened = conv_layers.at(1).get_flattened_filter();
+    vector<float>& conv_second_filters_flattened = conv_layers.at(1).get_flattened_filters();
     vector<float>& conv_second_bias = conv_layers.at(1).get_bias();
     num_channels = conv_second_dF[0].size();
     vec_idx = 0;

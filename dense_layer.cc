@@ -5,23 +5,32 @@ Dense_Layer::Dense_Layer(int in_dim, int out_dim) : in_dim(in_dim), out_dim(out_
     // init weights and bias
     // 5 x 4 dot 4 x 1 = 5 x 1 so its out_dim x in_dim
     vector<vector<float>> weights(out_dim, vector<float>(in_dim));
+    vector<float> flattened_weights(out_dim * in_dim);
+
     normal_distribution<float> normal_dist = normal_distribution<float>(0, 1);
     default_random_engine generator;
+    int vec_idx = 0;
     for (int i = 0; i < out_dim; i++)
     {
         for (int j = 0; j < in_dim; j++)
         {
             float init_val = normal_dist(generator);
             weights[i][j] = init_val * .01;
+            flattened_weights[vec_idx++] = init_val;
         }
     }
     this->weights = weights;
+    this->flattened_weights = flattened_weights;
     this->weights_T = transpose(weights);
     vector<float> bias(out_dim, 0);
     this->bias = bias;
 
     vector<vector<float> > dW(out_dim, vector<float>(in_dim, 0));
     this->dW = dW;
+
+    vector<float> dW_flattened(out_dim * in_dim, 0);
+    this->dW_flattened = dW_flattened;
+
     vector<float> dB(out_dim, 0);
     this->dB = dB;
 }
@@ -57,13 +66,18 @@ vector<float> Dense_Layer::backward(vector<float> &dprev, bool reset_grads)
     if(reset_grads)
         this->weights_T = transpose(weights);
     
+    int dw_index = 0;
     // dW is outer product of dprev and orig_in to get matrix
     for(int i  = 0; i < dprev.size(); i++) {
         for(int j = 0; j < orig_in.size(); j++) {
-            if(reset_grads)
+            if(reset_grads) {
                 dW[i][j] = dprev[i] * orig_in[j];
-            else
+                dW_flattened[dw_index++] = dprev[i] * orig_in[j];
+            }
+            else {
                 dW[i][j] += dprev[i] * orig_in[j];
+                dW_flattened[dw_index++] += dprev[i] * orig_in[j];
+            }
         }
     }
 
@@ -81,6 +95,10 @@ vector<float> Dense_Layer::backward(vector<float> &dprev, bool reset_grads)
 
 vector<float>& Dense_Layer::get_flattened_weights() {
     return flattened_weights;
+}
+
+vector<float>& Dense_Layer::get_flattened_dW() {
+    return dW_flattened;
 }
 
 /*
@@ -104,6 +122,14 @@ array2D<float>& Dense_Layer::get_dW() {
 
 vector<float>& Dense_Layer::get_dB() {
     return dB;
+}
+
+void Dense_Layer::set_dW(array2D<float> &dW) {
+    this->dW = dW;
+}
+
+void Dense_Layer::set_dB(vector<float> &dB) {
+    this->dB = dB;
 }
 
 array2D<float>& Dense_Layer::get_weights() {

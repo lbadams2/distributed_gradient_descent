@@ -4,9 +4,12 @@ Conv_Layer::Conv_Layer(int nf, int filter_dim, int num_channels, int stride, int
 {
     // filters initialized using standard normal, bias initialized all zeroes
     vector<vector<vector<vector<float> > > > filters(num_filters, vector<vector<vector<float> > >(num_channels, vector<vector<float> >(filter_dim, vector<float>(filter_dim))));
+    vector<float> flattened_filters(num_filters * num_channels * filter_dim * filter_dim);
     float stddev = 1 / sqrt(filter_dim * filter_dim);
     normal_distribution<float> normal_dist = normal_distribution<float>(0, stddev);
     default_random_engine generator;
+
+    int vec_idx = 0;
     for (int i = 0; i < num_filters; i++)
     {
         for(int n = 0; n < num_channels; n++) {
@@ -16,11 +19,13 @@ Conv_Layer::Conv_Layer(int nf, int filter_dim, int num_channels, int stride, int
                 {
                     float init_val = normal_dist(generator);
                     filters[i][n][j][k] = init_val;
+                    flattened_filters[vec_idx++] = init_val;
                 }
             }
         }
     }
     this->filters = filters;
+    this->flattened_filters = flattened_filters;
 
     out_dim = floor(((image_dim - filter_dim) / stride) + 1);
     vector<float> bias(num_filters, 0); // 1 bias per filter
@@ -28,6 +33,10 @@ Conv_Layer::Conv_Layer(int nf, int filter_dim, int num_channels, int stride, int
 
     vector<vector<vector<vector<float> > > > df(num_filters, vector<vector<vector<float> > >(num_channels, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
     this->df = df;
+
+    vector<float> df_flattened(num_filters * num_channels * filter_dim * filter_dim, 0);
+    this->df_flattened = df_flattened;
+
     vector<float> dB(num_filters, 0); // 1 bias per filter
     this->dB = dB;
 }
@@ -56,7 +65,7 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev, bool reset_grads)
         this->dB = dB;
     }
     */
-
+    int df_idx = 0;
     for (int f = 0; f < num_filters; f++)
     {
         for (int n = 0; n < num_channels; n++)
@@ -81,10 +90,14 @@ array3D<float> Conv_Layer::backward(array3D<float> &dprev, bool reset_grads)
                             sum += prod;
                         }
                     }
-                    if(reset_grads)
+                    if(reset_grads) {
                         df[f][n][out_y][out_x] = sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
-                    else
+                        df_flattened[df_idx++] = sum;
+                    }
+                    else {
                         df[f][n][out_y][out_x] += sum; // += if multiple channels in image, = if 1 channel, would still sum if 1 channel in batch gd
+                        df_flattened[df_idx++] += sum;
+                    }
                     curr_x += stride;
                     out_x++;
                 }
@@ -209,8 +222,12 @@ array3D<float> Conv_Layer::forward(array3D<float> &image)
     return out;
 }
 
-vector<float>& Conv_Layer::get_flattened_filter() {
+vector<float>& Conv_Layer::get_flattened_filters() {
     return flattened_filters;
+}
+
+vector<float>& Conv_Layer::get_flattened_dF() {
+    return df_flattened;
 }
 
 /*
@@ -237,6 +254,14 @@ array4D<float>& Conv_Layer::get_dF() {
 
 vector<float>& Conv_Layer::get_dB() {
     return dB;
+}
+
+void Conv_Layer::set_dF(array4D<float> &dF) {
+    this->df = dF;
+}
+
+void Conv_Layer::set_dB(vector<float> &dB) {
+    this->dB = dB;
 }
 
 array4D<float>& Conv_Layer::get_filters() {

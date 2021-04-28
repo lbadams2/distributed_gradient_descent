@@ -14,6 +14,12 @@ using std::endl;
 #define MNIST_MEAN 33.3184f
 #define MNIST_STDDEV 73.7704f
 
+#define NUM_FILTERS 8
+#define IMAGE_CHANNELS 1
+#define FILTER_DIM 5
+#define DENSE_FIRST_OUT 128
+#define DENSE_FIRST_IN 800
+
 template<typename T>
 using array2D = vector<vector<T> >;
 

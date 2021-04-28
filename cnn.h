@@ -32,9 +32,14 @@ public:
     int get_out_dim();
     array4D<float>& get_dF();
     vector<float>& get_dB();
+    void set_dF(array4D<float> &dF);
+    void set_dB(vector<float> &dB);
     array4D<float>& get_filters();
     vector<float>& get_bias();
-    vector<float>& get_flattened_filter();
+    vector<float>& get_flattened_filters();
+    vector<float>& get_flattened_dF();
+    void set_filters(array4D<float> &filters);
+    void set_bias(vector<float> &bias);
 private:
     array4D<float> filters;
     vector<float> flattened_filters;
@@ -47,6 +52,7 @@ private:
     int out_dim;
     array3D<float> image; // save this for back prop
     array4D<float> df;
+    vector<float> df_flattened;
     vector<float> dB;
 };
 
@@ -58,16 +64,22 @@ public:
     vector<float> backward(vector<float> &dprev, bool reset_grads);
     int get_in_dim();
     vector<float>& get_flattened_weights();
+    vector<float>& get_flattened_dW();
     array2D<float>& get_dW();
     vector<float>& get_dB();
+    void set_dW(array2D<float> &dW);
+    void set_dB(vector<float> &dB);
     array2D<float>& get_weights();
     vector<float>& get_bias();
+    void set_weights(array2D<float> &weights);
+    void set_bias(vector<float> &bias);
 private:
     array2D<float> weights;
     vector<float> flattened_weights;
     array2D<float> weights_T; // update this after each mini batch, after adam is run
     vector<float> bias;
     array2D<float> dW;
+    vector<float> dW_flattened;
     vector<float> dB;
     vector<float> orig_in; // save this for back prop
     int in_dim;

@@ -1,6 +1,6 @@
 #include "load_image.h"
 #include "cnn.h"
-#include "optimizer.h"
+#include "distributed.h"
 
 array4D<float> first_dF;
 vector<float> first_conv_dB;
@@ -14,7 +14,10 @@ vector<float> first_dense_dB;
 array2D<float> second_dW;
 vector<float> second_dense_dB;
 
-mutex grad_mutex;
+mutex first_conv_mutex;
+mutex second_conv_mutex;
+mutex first_dense_mutex;
+mutex second_dense_mutex;
 mutex cout_mutex;
 
 const char* worker1_hostname = "grad_calc_1";
@@ -73,9 +76,9 @@ array2D<float> create_batches(vector<float> &images, vector<uint8_t> &labels, ar
 
 vector<float> get_worker_data(vector<float> &flattened_images, vector<float> &labels, Model &cnn) {
     vector<Conv_Layer> &conv_layers = cnn.get_conv_layers();
-    vector<float> first_conv_filter = conv_layers[0].get_flattened_filter();
+    vector<float> first_conv_filter = conv_layers[0].get_flattened_filters();
     vector<float> first_conv_bias = conv_layers[0].get_bias();
-    vector<float> second_conv_filter = conv_layers[1].get_flattened_filter();
+    vector<float> second_conv_filter = conv_layers[1].get_flattened_filters();
     vector<float> second_conv_bias = conv_layers[1].get_bias();
 
     vector<Dense_Layer> &dense_layers = cnn.get_dense_layers();
@@ -112,8 +115,155 @@ string resolve_host(const char* host_name) {
     return IPbuffer;
 }
 
-int send_vec(float* all_vec_arr, int vec_size, const char* ip_address, int port, int thread_id) {
+float read_buf(float* grads, array4D<float> &thread_first_dF, vector<float> &thread_first_conv_dB, array4D<float> &thread_second_dF, vector<float> &thread_second_conv_dB, array2D<float> &thread_first_dW, vector<float> &thread_first_dense_dB, array2D<float> &thread_second_dW, vector<float> &thread_second_dense_dB) {
+    int num_filters = thread_first_dF.size();
+    int num_channels = thread_first_dF[0].size();
+    int filter_dim = thread_first_dF[0][0].size();
+    int vec_idx = 0;
+    for(int f = 0; f < num_filters; f++)
+        for(int n = 0; n < num_channels; n++)
+            for(int i = 0; i < filter_dim; i++)
+                for(int j = 0; j < filter_dim; j++)
+                    thread_first_dF[f][n][i][j] = grads[vec_idx++];
+    assert(vec_idx == FIRST_CONV_DF_LEN);
 
+    int bias_len = thread_first_conv_dB.size();
+    for(int i = 0; i < bias_len; i++)
+        thread_first_conv_dB[i] = grads[vec_idx++];
+    assert(vec_idx == FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN);
+
+    num_channels = thread_second_dF[0].size();
+    for(int f = 0; f < num_filters; f++)
+        for(int n = 0; n < num_channels; n++)
+            for(int i = 0; i < filter_dim; i++)
+                for(int j = 0; j < filter_dim; j++)
+                    thread_second_dF[f][n][i][j] = grads[vec_idx++];
+    assert(vec_idx == FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN);
+
+    bias_len = thread_second_conv_dB.size();
+    for(int i = 0; i < bias_len; i++)
+        thread_second_conv_dB[i] = grads[vec_idx++];
+    assert(vec_idx == FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN);
+
+    int first_dense_out = thread_first_dW.size();
+    int first_dense_in = thread_first_dW[0].size();
+    for(int i = 0; i < first_dense_out; i++)
+        for(int j = 0; j < first_dense_in; j++)
+            thread_first_dW[i][j] = grads[vec_idx++];
+    assert(vec_idx == FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN);
+
+    bias_len = thread_first_dense_dB.size();
+    for(int i = 0; i < bias_len; i++)
+        thread_first_dense_dB[i] = grads[vec_idx++];
+    assert(vec_idx == FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN);
+
+    for(int i = 0; i < NUM_LABELS; i++)
+        for(int j = 0; j < first_dense_out; j++)
+            thread_second_dW[i][j] = grads[vec_idx++];
+    assert(vec_idx == FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN);
+
+    bias_len = thread_second_dense_dB.size();
+    for(int i = 0; i < bias_len; i++)
+        thread_second_dense_dB[i] = grads[vec_idx++];
+    assert(vec_idx == FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN + SECOND_DENSE_DB_LEN);
+
+    float loss = grads[vec_idx];
+    return loss;
+}
+
+void add_first_conv_grads(array4D<float> &thread_first_dF, vector<float> &thread_first_dB) {
+    lock_guard<mutex> guard(first_conv_mutex);
+    for(int f = 0; f < NUM_FILTERS; f++) {
+        first_conv_dB[f] += thread_first_dB[f];
+        for(int n = 0; n < IMAGE_CHANNELS; n++)
+            for(int i = 0; i < FILTER_DIM; i++)
+                for(int j = 0; j < FILTER_DIM; j++)
+                    first_dF[f][n][i][j] += thread_first_dF[f][n][i][j];
+    }
+}
+
+void add_second_conv_grads(array4D<float> &thread_second_dF, vector<float> &thread_second_dB) {
+    lock_guard<mutex> guard(second_conv_mutex);
+    for(int f = 0; f < NUM_FILTERS; f++) {
+        second_conv_dB[f] += thread_second_dB[f];
+        for(int n = 0; n < NUM_FILTERS; n++)
+            for(int i = 0; i < FILTER_DIM; i++)
+                for(int j = 0; j < FILTER_DIM; j++)
+                    second_dF[f][n][i][j] += thread_second_dF[f][n][i][j];
+    }
+}
+
+void add_first_dense_grads(array2D<float> &thread_first_dW, vector<float> &thread_first_dB) {
+    lock_guard<mutex> guard(first_dense_mutex);
+    for(int i = 0; i < DENSE_FIRST_OUT; i++) {
+        first_dense_dB[i] += thread_first_dB[i];
+        for(int j = 0; j < DENSE_FIRST_IN; j++)
+            first_dW[i][j] += thread_first_dW[i][j];
+    }
+}
+
+void add_second_dense_grads(array2D<float> &thread_second_dW, vector<float> &thread_second_dB) {
+    lock_guard<mutex> guard(second_dense_mutex);
+    for(int i = 0; i < NUM_LABELS; i++) {
+        second_dense_dB[i] += thread_second_dB[i];
+        for(int j = 0; j < DENSE_FIRST_IN; j++)
+            second_dW[i][j] += thread_second_dW[i][j];
+    }
+}
+
+int send_vec(float* all_vec_arr, int vec_size, const char* ip_address, int port, int thread_id, int num_filters, int image_channels, int filter_dim, int dense_first_out, int dense_first_in, promise<float> && p) {
+    int sock = 0, valread;
+    struct sockaddr_in serv_addr;    
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+       
+    // Convert IPv4 and IPv6 addresses from text to binary form
+    if(inet_pton(AF_INET, ip_address, &serv_addr.sin_addr)<=0) 
+    {
+        printf("\nInvalid address/ Address not supported \n");
+        return -1;
+    }
+    
+       
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+        printf("\n Socket creation error \n");
+        return -1;
+    } 
+
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    {
+            printf("\nConnection Failed \n");
+            return -1;
+    }            
+    send(sock , all_vec_arr , vec_size * 4 , 0 ); // 3rd arg is length in bytes, float is 4 bytes
+
+    // 105635
+    int buf_len = FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN + SECOND_DENSE_DB_LEN + 1;
+    float buffer[105635];
+    int buf_size = buf_len * 4;
+    valread = read( sock , buffer, buf_size);
+
+    vector<vector<vector<vector<float> > > > thread_first_dF(num_filters, vector<vector<vector<float> > >(image_channels, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
+    vector<float> thread_first_conv_dB(num_filters, 0); // 1 bias per filter
+
+    vector<vector<vector<vector<float> > > > thread_second_dF(num_filters, vector<vector<vector<float> > >(num_filters, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
+    vector<float> thread_second_conv_dB(num_filters, 0); // 1 bias per filter
+
+    vector<vector<float> > thread_first_dW(dense_first_out, vector<float>(dense_first_in, 0));
+    vector<float> thread_first_dense_dB(dense_first_out, 0);
+
+    vector<vector<float> > thread_second_dW(NUM_LABELS, vector<float>(dense_first_out, 0));
+    vector<float> thread_second_dense_dB(NUM_LABELS, 0);
+
+    float loss = read_buf(buffer, thread_first_dF, thread_first_conv_dB, thread_second_dF, thread_second_conv_dB, thread_first_dW, thread_first_dense_dB, thread_second_dW, thread_second_dense_dB);
+    p.set_value(loss);
+
+    add_first_conv_grads(thread_first_dF, thread_first_conv_dB);
+    add_second_conv_grads(thread_second_dF, thread_second_conv_dB);
+    add_first_dense_grads(thread_first_dW, thread_first_dense_dB);
+    add_second_dense_grads(thread_second_dW, thread_second_dense_dB);
+    return 0;
 }
 
 int main(int argc, char const *argv[]) {
@@ -144,10 +294,9 @@ int main(int argc, char const *argv[]) {
 
     // batch_size just used by adam
     Model cnn(filter_dim, pool_dim, num_filters, pool_stride, conv_stride, dense_first_out_dim, learning_rate, beta1, beta2, batch_size);
-    int dense_first_in = cnn.get_dense_layers()[0].get_in_dim();
-    init_grads(num_filters, num_channels, filter_dim, dense_first_in, dense_first_out_dim);
+    int dense_first_in = cnn.get_dense_layers()[0].get_in_dim();    
 
-    float batch_loss = 0, image_loss = 0;
+    float batch_loss = 0;
 
     string ip_1_str = resolve_host(worker1_hostname);
     string ip_2_str = resolve_host(worker2_hostname);
@@ -159,8 +308,9 @@ int main(int argc, char const *argv[]) {
     const char * ip_4 = ip_4_str.c_str();
     
     int batch_idx = 0;
-    for(int n = 0; n < num_worker_images; n + NUM_WORKERS) {
+    for(int n = 0; n < num_worker_images; n += NUM_WORKERS) {
         batch_loss = 0;
+        init_grads(num_filters, num_channels, filter_dim, dense_first_in, dense_first_out_dim);
         cout << "processing batch " << batch_idx << endl;
         vector<float> worker1_images = worker_images[n];
         vector<float> worker2_images = worker_images[n+1];
@@ -177,16 +327,41 @@ int main(int argc, char const *argv[]) {
         vector<float> worker3_data = get_worker_data(worker1_images, worker1_labels, cnn);
         vector<float> worker4_data = get_worker_data(worker1_images, worker1_labels, cnn);
 
-        thread t1(send_vec, worker1_data.data(), worker1_data.size(), ip_1, 8080, 1);
-        thread t2(send_vec, worker1_data.data(), worker2_data.size(), ip_2, 8081, 2);
-        thread t3(send_vec, worker1_data.data(), worker3_data.size(), ip_3, 8082, 3);
-        thread t4(send_vec, worker1_data.data(), worker4_data.size(), ip_4, 8083, 4);
+        promise<float> p1;
+        auto f1 = p1.get_future();
+        thread t1(send_vec, worker1_data.data(), worker1_data.size(), ip_1, 8080, 1, num_filters, num_channels, filter_dim, dense_first_out_dim, dense_first_in, std::move(p1));
+        
+        promise<float> p2;
+        auto f2 = p2.get_future();
+        thread t2(send_vec, worker1_data.data(), worker2_data.size(), ip_2, 8081, 2, num_filters, num_channels, filter_dim, dense_first_out_dim, dense_first_in, std::move(p2));
+        
+        promise<float> p3;
+        auto f3 = p3.get_future();
+        thread t3(send_vec, worker1_data.data(), worker3_data.size(), ip_3, 8082, 3, num_filters, num_channels, filter_dim, dense_first_out_dim, dense_first_in, std::move(p3));
+        
+        promise<float> p4;
+        auto f4 = p4.get_future();
+        thread t4(send_vec, worker1_data.data(), worker4_data.size(), ip_4, 8083, 4, num_filters, num_channels, filter_dim, dense_first_out_dim, dense_first_in, std::move(p4));
         t1.join();
         t2.join();
         t3.join();
         t4.join();
 
+        float loss_1 = f1.get();
+        float loss_2 = f2.get();
+        float loss_3 = f3.get();
+        float loss_4 = f4.get();
+        batch_loss = loss_1 + loss_2 + loss_3 + loss_4;
         cout << "Loss for batch " << n << ": " << batch_loss / batch_size;
+        
+        cnn.get_conv_layers()[0].set_dF(first_dF);
+        cnn.get_conv_layers()[1].set_dF(second_dF);
+        cnn.get_conv_layers()[0].set_dB(first_conv_dB);
+        cnn.get_conv_layers()[1].set_dB(second_conv_dB);
+        cnn.get_dense_layers()[0].set_dW(first_dW);
+        cnn.get_dense_layers()[1].set_dW(second_dW);
+        cnn.get_dense_layers()[0].set_dB(first_dense_dB);
+        cnn.get_dense_layers()[1].set_dB(second_dense_dB);
         cnn.adam();
     }
 }

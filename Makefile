@@ -1,10 +1,14 @@
-all: train
+grad_calc: conv_layer.o dense_layer.o maxpool_layer.o cnn.o grad_calc.o
+	g++ -std=c++17 -g -o grad_calc conv_layer.o dense_layer.o maxpool_layer.o cnn.o grad_calc.o
 
-train: load_image.o conv_layer.o dense_layer.o maxpool_layer.o cnn.o train.o
-	g++ -std=c++17 -g -o train load_image.o conv_layer.o dense_layer.o maxpool_layer.o cnn.o train.o
+optimizer: load_image.o conv_layer.o dense_layer.o maxpool_layer.o cnn.o optimizer.o
+	g++ -std=c++17 -g -o optimizer load_image.o conv_layer.o dense_layer.o maxpool_layer.o cnn.o optimizer.o
 
-train.o: load_image.h cnn.h train.cc
-	g++ -std=c++17 -g -c train.cc
+grad_calc.o: distributed.h cnn.h grad_calc.cc
+	g++ -std=c++17 -g -c grad_calc.cc
+
+optimizer.o: distributed.h cnn.h load_image.h optimizer.cc
+	g++ -std=c++17 -g -c optimizer.cc
 
 cnn.o: cnn.h cnn.cc
 	g++ -std=c++17 -g -c cnn.cc
@@ -20,6 +24,13 @@ conv_layer.o: cnn.h conv_layer.cc
 
 load_image.o: load_image.h load_image.cc
 	g++ -std=c++17 -g -c load_image.cc
+
+#test
+server:
+	g++ -std=c++17 -g -o worker worker.cc
+
+client:
+	g++ -std=c++17 -g -o master master.cc
 
 unit_tests: unit_tests.cc
 	g++ -std=c++17 -g -o unit_tests unit_tests.cc
