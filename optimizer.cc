@@ -45,7 +45,7 @@ array2D<float> create_batches(vector<float> &images, vector<uint8_t> &labels, ar
     int image_per_worker = worker_labels[0].size();
 
     int num_worker_labels = num_worker_images;
-    assert(num_worker_labels == images.size() / image_per_worker); // 60000 / 8
+    assert(num_worker_labels == images.size() / pixels_per_worker); // 60000 / 8
     int total_labels = num_worker_labels * image_per_worker; // should be 60000
 
     int vec_idx = 0;
@@ -336,8 +336,12 @@ int send_vec(float* all_vec_arr, int vec_size, const char* ip_address, int port,
 }
 
 int main(int argc, char const *argv[]) {
-    vector<float> images = get_training_images();
-    vector<uint8_t> labels = get_training_labels();
+    vector<float> images = get_training_images("data/train-images-idx3-ubyte");
+    vector<uint8_t> labels = get_training_labels("data/train-labels-idx1-ubyte");
+
+    cout << "sleeping for 10 seconds to let workers start" << endl;
+    std::chrono::milliseconds timespan(10000);
+    std::this_thread::sleep_for(timespan);
 
     int batch_size = atoi(argv[1]);
     int num_channels = 1; // grayscale
@@ -353,7 +357,7 @@ int main(int argc, char const *argv[]) {
 
     int num_worker_labels = num_worker_images;
     int total_labels = num_worker_labels * image_per_worker;
-    assert(total_labels == images.size());
+    assert(total_labels == num_images);
     vector<vector<float> > worker_labels(num_worker_labels, vector<float>(image_per_worker)); // concatenated vec of 8 labels sent to each worker
     create_batches(images, labels, worker_images, worker_labels);
 

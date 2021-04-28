@@ -105,9 +105,9 @@ array3D<float> normalize_images(array3D<uint8_t> &images, int num_images, int im
     return norm_images;
 }
 
-vector<float> get_training_images() {
+vector<float> get_training_images(string path) {
     int number_of_images = 0, image_size = 0;
-    vector<float> images = read_mnist_images("/Users/liam_adams/my_repos/csc724_project/data/train-images-idx3-ubyte", number_of_images, image_size);
+    vector<float> images = read_mnist_images(path, number_of_images, image_size);
     cout << "number of images " << number_of_images << endl;
     cout << "image size " << image_size << endl;
     int sum = 0, image_dim = 0;
@@ -118,9 +118,9 @@ vector<float> get_training_images() {
     return images;
 }
 
-vector<uint8_t> get_training_labels() {
+vector<uint8_t> get_training_labels(string path) {
     int num_labels = 0;
-    vector<uint8_t> labels = read_mnist_labels("/Users/liam_adams/my_repos/csc724_project/data/train-labels-idx1-ubyte", num_labels);
+    vector<uint8_t> labels = read_mnist_labels(path, num_labels);
     cout << "number of labels " << labels.size() << endl;
     return labels;
 }

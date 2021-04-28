@@ -1,0 +1,8 @@
+*.o
+grad_calc
+optimizer
+master
+worker
+unit_tests
+*.dSYM
+.vscode
