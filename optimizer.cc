@@ -511,7 +511,7 @@ int main(int argc, char const *argv[]) {
     }
     total_end_time = std::chrono::high_resolution_clock::now();
     auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(total_end_time - total_start_time);
-    cout << "time for 9600 images " << ms_int.count() << "ms\n\n\n";
+    cout << "time for " << num_demo_images << " images " << ms_int.count() << "ms\n\n\n";
     // batch size 32, 9600 images, 129 seconds
     // batch size 64, 9600 images, 125 seconds
 }
