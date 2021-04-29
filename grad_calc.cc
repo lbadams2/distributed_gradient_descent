@@ -35,7 +35,7 @@ void print_grads(float* grads) {
     cout << "\n\n";
 }
 
-void read_buf(float* data, Model &cnn, array4D<float> &images, vector<float> &labels) {
+void read_buf(vector<float> &data, Model &cnn, array4D<float> &images, vector<float> &labels) {
     vector<Conv_Layer> &conv_layers = cnn.get_conv_layers();
     array4D<float> &first_conv_filters = conv_layers[0].get_filters();
     vector<float> &first_conv_bias = conv_layers[0].get_bias();
@@ -130,10 +130,16 @@ vector<float> get_grads(Model &cnn, float batch_loss) {
     return all_grads;
 }
 
-void print_buf(float* buf) {
+void print_buf(vector<float> &buf) {
     cout << "printing values received by optimizer, same values it printed before sending" << endl;
     cout << buf[0] << " " << buf[100] << " " << buf[200] << " " << buf[1000] << endl;
     cout << "\n\n";
+}
+
+void fill_buf(float* partial_buf, vector<float> &all_buf, int start_idx, int partial_buf_bytes) {
+    int partial_buf_len = partial_buf_bytes / 4;
+    for(int i = 0; i < partial_buf_len; i++)
+        all_buf.push_back(partial_buf[i]);   
 }
 
 int main(int argc, char const *argv[]) {
@@ -163,7 +169,7 @@ int main(int argc, char const *argv[]) {
     address.sin_port = htons( port );
        
     // Forcefully attaching socket to the port 8080
-    if (bind(server_fd, (struct sockaddr *)&address, 
+    if (bind(server_fd, (struct sockaddr *)&address,
                                  sizeof(address))<0)
     {
         perror("bind failed");
@@ -179,27 +185,40 @@ int main(int argc, char const *argv[]) {
     int images_len = num_images * IMAGE_DIM * IMAGE_DIM;
     
     int buf_len = images_len + num_images + FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN + SECOND_DENSE_DB_LEN;
-    int buf_size = buf_len * 4;
+    cout << "buf len for data from optimizer " << buf_len << endl;
+    long buf_size = buf_len * 4;
     float* buffer = new float[buf_len];
     while(true) {
         if (listen(server_fd, 3) < 0)
         {
             perror("listen");
             exit(EXIT_FAILURE);
-        }    
+        }
 
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, 
+        if ((new_socket = accept(server_fd, (struct sockaddr *)&address,
                        (socklen_t*)&addrlen))<0)
         {
             perror("accept");
             exit(EXIT_FAILURE);
         }
-        valread = read( new_socket , buffer, buf_size); // buf_len in bytes
-        print_buf(buffer);
+        vector<float> all_buffer;
+        all_buffer.reserve(buf_len);
+        cout << "buf size read from optimizer " << buf_size << endl;
+        int bytes_read = 0;
+        while(bytes_read < buf_size) {
+            valread = read( new_socket , buffer, buf_size); // buf_len in bytes
+            int start_idx = bytes_read / 4;
+            bytes_read += valread;
+            fill_buf(buffer, all_buffer, start_idx, valread);
+        }
+        cout << "total bytes read " << bytes_read << ", " << "number of float elements " << bytes_read / 4 << endl;
+        cout << "value of first dense weight " << all_buffer[6272 + 8 + 200 + 8 + 1600 + 8] << endl;
+        cout << "value of 80th dense weight " << all_buffer[6272 + 8 + 200 + 8 + 1600 + 8 + 80] << endl;
+        print_buf(all_buffer);
 
         vector<vector<vector<vector<float> > > > images(num_images, vector<vector<vector<float> > >(IMAGE_CHANNELS, vector<vector<float> >(IMAGE_DIM, vector<float>(IMAGE_DIM, 0))));
         vector<float> labels(num_images, 0);
-        read_buf(buffer, cnn, images, labels);
+        read_buf(all_buffer, cnn, images, labels);
         print_cnn(cnn);
 
         float image_loss = 0, batch_loss = 0;
@@ -222,7 +241,6 @@ int main(int argc, char const *argv[]) {
         send(new_socket , all_grads_arr , all_grads.size() * 4 , 0 );
         printf("gradients sent\n");
     }
-    delete[] buffer;
     return 0;
 
 }
