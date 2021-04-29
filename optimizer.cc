@@ -105,7 +105,7 @@ vector<float> get_worker_data(vector<float> &flattened_images, vector<float> &la
     int all_data_size = flattened_images.size() + labels.size() + first_conv_filter.size() + first_conv_bias.size() + second_conv_filter.size() + second_conv_bias.size() + first_dense_weights.size() + first_dense_bias.size() + second_dense_weights.size() + second_dense_bias.size();
     int test_size = 6272 + 8 + 200 + 8 + 1600 + 8 + 102400 + 128 + 1280 + 10;
     assert(all_data_size == test_size);
-    cout << "vec to grad calc reserve size is " << test_size << endl;
+    //cout << "vec to grad calc reserve size is " << test_size << endl;
     all_data.reserve(all_data_size);
 
     all_data.insert( all_data.end(), flattened_images.begin(), flattened_images.end() );
@@ -121,12 +121,12 @@ vector<float> get_worker_data(vector<float> &flattened_images, vector<float> &la
     all_data.insert( all_data.end(), second_dense_weights.begin(), second_dense_weights.end() );
     all_data.insert( all_data.end(), second_dense_bias.begin(), second_dense_bias.end() );
 
-    cout << "printing some values of buffer sent to grad calc " << worker_num << ", buffer is size " << all_data.size() << ", reserved size is " << all_data_size << endl;
-    cout << all_data[0] << " " << all_data[100] << " " << all_data[200] << " " << all_data[1000] << endl;
-    cout << "value of first dense weight " << all_data[6272 + 8 + 200 + 8 + 1600 + 8];
-    cout << "value of 80th dense weight " << all_data[6272 + 8 + 200 + 8 + 1600 + 8 + 80];
-    cout << "after inserting vec to grad calc size is " << all_data.size() << endl;
-    cout << "\n\n";
+    //cout << "printing some values of buffer sent to grad calc " << worker_num << ", buffer is size " << all_data.size() << ", reserved size is " << all_data_size << endl;
+    //cout << all_data[0] << " " << all_data[100] << " " << all_data[200] << " " << all_data[1000] << endl;
+    //cout << "value of first dense weight " << all_data[6272 + 8 + 200 + 8 + 1600 + 8];
+    //cout << "value of 80th dense weight " << all_data[6272 + 8 + 200 + 8 + 1600 + 8 + 80];
+    //cout << "after inserting vec to grad calc size is " << all_data.size() << endl;
+    //cout << "\n\n";
     return all_data;
 }
 
@@ -148,6 +148,7 @@ void print_buf(int thread_id, vector<float> buf) {
 
 void print_thread_grads(int thread_id, array4D<float> thread_first_dF, vector<float> thread_second_conv_dB, vector<float> thread_second_dense_dB) {
     lock_guard<mutex> guard(cout_mutex);
+    /*
     cout << "thread " << thread_id << ": printing some vals from first conv dF" << endl;
     cout << thread_first_dF[1][0][1][2] << " " << thread_first_dF[2][0][2][2] << " " << thread_first_dF[3][0][1][1] << " " << thread_first_dF[6][0][2][2] << endl;
     cout << "\n\n";
@@ -155,7 +156,7 @@ void print_thread_grads(int thread_id, array4D<float> thread_first_dF, vector<fl
     cout << "thread " << thread_id << ": printing some vals from second conv dB" << endl;
     cout << thread_second_conv_dB[0] << " " << thread_second_conv_dB[2] << " " << thread_second_conv_dB[3] << endl;
     cout << "\n\n";
-
+    */
     cout << "thread " << thread_id << ": printing some vals from second dense dB" << endl;
     cout << thread_second_dense_dB[0] << " " << thread_second_dense_dB[3] << " " << thread_second_dense_dB[5] << " " << thread_second_dense_dB[7] << endl;
     cout << "\n\n";
@@ -170,22 +171,21 @@ void print_global_grads(Model& cnn) {
     cout << "printing some vals from first conv dF" << endl;
     cout << local_first_dF[0][0][0][0] << " " << local_first_dF[1][0][0][1] << " " << local_first_dF[2][0][1][0] << " " << local_first_dF[3][0][1][1] << endl;
     cout << "\n\n";
-    */
 
     cout << "printing same vals from global dF" << endl;
     cout << first_dF[0][0][0][0] << " " << first_dF[1][0][0][1] << " " << first_dF[2][0][1][0] << " " << first_dF[3][0][1][1] << endl;
     cout << "\n\n";
     
-    /*
     vector<float>& local_first_conv_dB = first_conv_layer.get_dB();
     cout << "printing some vals from first conv dB" << endl;
     cout << local_first_conv_dB[0] << " " << local_first_conv_dB[1] << " " << local_first_conv_dB[2] << " " << local_first_conv_dB[3] << endl;
     cout << "\n\n";
-    */
+    
 
     cout << "printing same vals from global first conv dB" << endl;
     cout << first_conv_dB[0] << " " << first_conv_dB[1] << " " << first_conv_dB[2] << " " << first_conv_dB[3] << endl;
     cout << "\n\n";
+    */
 
     vector<Dense_Layer>& dense_layers = cnn.get_dense_layers();
     Dense_Layer& second_dense_layer = dense_layers.at(1);
@@ -195,13 +195,11 @@ void print_global_grads(Model& cnn) {
     cout << "printing some vals from second dense dW" << endl;
     cout << local_second_dW[0][5] << " " << local_second_dW[1][15] << " " << local_second_dW[2][25] << " " << local_second_dW[3][35] << endl;
     cout << "\n\n";
-    */
 
     cout << "printing same vals from global second dense dW" << endl;
     cout << second_dW[0][5] << " " << second_dW[1][15] << " " << second_dW[2][25] << " " << second_dW[3][35] << endl;
     cout << "\n\n";
 
-    /*
     vector<float>& local_second_dense_dB = second_dense_layer.get_dB();
     cout << "printing some vals from second dense dB" << endl;
     cout << local_second_dense_dB[0] << " " << local_second_dense_dB[1] << " " << local_second_dense_dB[2] << " " << local_second_dense_dB[3] << endl;
@@ -321,8 +319,8 @@ int send_vec(float* all_vec_arr, int vec_size, const char* ip_address, int port,
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
     //test(all_vec_arr, cnn);
-    cout << "value of first dense weight " << all_vec_arr[6272 + 8 + 200 + 8 + 1600 + 8] << endl;
-    cout << "value of 80th dense weight " << all_vec_arr[6272 + 8 + 200 + 8 + 1600 + 8 + 80] << endl;
+    //cout << "value of first dense weight " << all_vec_arr[6272 + 8 + 200 + 8 + 1600 + 8] << endl;
+    //cout << "value of 80th dense weight " << all_vec_arr[6272 + 8 + 200 + 8 + 1600 + 8 + 80] << endl;
     // Convert IPv4 and IPv6 addresses from text to binary form
     if(inet_pton(AF_INET, ip_address, &serv_addr.sin_addr)<=0)
     {
@@ -343,7 +341,7 @@ int send_vec(float* all_vec_arr, int vec_size, const char* ip_address, int port,
             return -1;
     }
     
-    cout << "buf size sent to calc grad " << vec_size * 4 << endl;
+    //cout << "buf size sent to calc grad " << vec_size * 4 << endl;
     int sendval = send(sock , all_vec_arr , vec_size * 4 , 0 ); // 3rd arg is length in bytes, float is 4 bytes
 
     // 105635
@@ -360,7 +358,7 @@ int send_vec(float* all_vec_arr, int vec_size, const char* ip_address, int port,
         fill_buf(buf, all_buffer, start_idx, valread);
     }
     
-    print_buf(thread_id, all_buffer);
+    //print_buf(thread_id, all_buffer);
 
     vector<vector<vector<vector<float> > > > thread_first_dF(num_filters, vector<vector<vector<float> > >(image_channels, vector<vector<float> >(filter_dim, vector<float>(filter_dim, 0))));
     vector<float> thread_first_conv_dB(num_filters, 0); // 1 bias per filter

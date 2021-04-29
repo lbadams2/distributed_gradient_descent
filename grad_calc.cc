@@ -185,7 +185,7 @@ int main(int argc, char const *argv[]) {
     int images_len = num_images * IMAGE_DIM * IMAGE_DIM;
     
     int buf_len = images_len + num_images + FIRST_CONV_DF_LEN + FIRST_CONV_DB_LEN + SECOND_CONV_DF_LEN + SECOND_CONV_DB_LEN + FIRST_DENSE_DW_LEN + FIRST_DENSE_DB_LEN + SECOND_DENSE_DW_LEN + SECOND_DENSE_DB_LEN;
-    cout << "buf len for data from optimizer " << buf_len << endl;
+    //cout << "buf len for data from optimizer " << buf_len << endl;
     long buf_size = buf_len * 4;
     float* buffer = new float[buf_len];
     while(true) {
@@ -203,7 +203,7 @@ int main(int argc, char const *argv[]) {
         }
         vector<float> all_buffer;
         all_buffer.reserve(buf_len);
-        cout << "buf size read from optimizer " << buf_size << endl;
+        //cout << "buf size read from optimizer " << buf_size << endl;
         int bytes_read = 0;
         while(bytes_read < buf_size) {
             valread = read( new_socket , buffer, buf_size); // buf_len in bytes
@@ -211,10 +211,12 @@ int main(int argc, char const *argv[]) {
             bytes_read += valread;
             fill_buf(buffer, all_buffer, start_idx, valread);
         }
+        /*
         cout << "total bytes read " << bytes_read << ", " << "number of float elements " << bytes_read / 4 << endl;
         cout << "value of first dense weight " << all_buffer[6272 + 8 + 200 + 8 + 1600 + 8] << endl;
         cout << "value of 80th dense weight " << all_buffer[6272 + 8 + 200 + 8 + 1600 + 8 + 80] << endl;
-        print_buf(all_buffer);
+        */
+        //print_buf(all_buffer);
 
         vector<vector<vector<vector<float> > > > images(num_images, vector<vector<vector<float> > >(IMAGE_CHANNELS, vector<vector<float> >(IMAGE_DIM, vector<float>(IMAGE_DIM, 0))));
         vector<float> labels(num_images, 0);
@@ -237,7 +239,7 @@ int main(int argc, char const *argv[]) {
 
         vector<float> all_grads = get_grads(cnn, batch_loss);
         float* all_grads_arr = all_grads.data();
-        print_grads(all_grads_arr);
+        //print_grads(all_grads_arr);
         send(new_socket , all_grads_arr , all_grads.size() * 4 , 0 );
         printf("gradients sent\n");
     }
