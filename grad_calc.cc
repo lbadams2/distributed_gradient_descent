@@ -188,6 +188,9 @@ int main(int argc, char const *argv[]) {
     //cout << "buf len for data from optimizer " << buf_len << endl;
     long buf_size = buf_len * 4;
     float* buffer = new float[buf_len];
+    int batch_idx = 0;
+    std::chrono::high_resolution_clock::time_point start_time, end_time;
+    long duration = 0;
     while(true) {
         if (listen(server_fd, 3) < 0)
         {
@@ -225,6 +228,7 @@ int main(int argc, char const *argv[]) {
 
         float image_loss = 0, batch_loss = 0;
         bool reset_grads = true;
+        start_time = std::chrono::high_resolution_clock::now();
         for(int i = 0; i < num_images; i++) {
             array3D<float> image = images[i];
             uint8_t label = labels[i];
@@ -236,12 +240,16 @@ int main(int argc, char const *argv[]) {
             cnn.backprop(model_out, label_one_hot, reset_grads);
             reset_grads = false;
         }
+        end_time = std::chrono::high_resolution_clock::now();
+        auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        cout << "time for batch " << batch_idx << ": " << ms_int.count() << "ms\n\n\n";
 
         vector<float> all_grads = get_grads(cnn, batch_loss);
         float* all_grads_arr = all_grads.data();
         //print_grads(all_grads_arr);
         send(new_socket , all_grads_arr , all_grads.size() * 4 , 0 );
         printf("gradients sent\n");
+        batch_idx++;
     }
     return 0;
 

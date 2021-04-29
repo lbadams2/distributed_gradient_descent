@@ -42,7 +42,8 @@ void init_grads(int num_filters, int image_channels, int filter_dim, int dense_f
 array2D<float> create_batches(vector<float> &images, vector<uint8_t> &labels, array2D<float> &worker_images, array2D<float> &worker_labels) {
     int num_worker_images = worker_images.size();
     int pixels_per_worker = worker_images[0].size();
-    assert(pixels_per_worker == 784 * 8);
+    //assert(pixels_per_worker == 784 * 8);
+    //assert(pixels_per_worker == 784 * 16);
     int image_per_worker = worker_labels[0].size();
 
     int num_worker_labels = num_worker_images;
@@ -103,8 +104,11 @@ vector<float> get_worker_data(vector<float> &flattened_images, vector<float> &la
 
     vector<float> all_data;
     int all_data_size = flattened_images.size() + labels.size() + first_conv_filter.size() + first_conv_bias.size() + second_conv_filter.size() + second_conv_bias.size() + first_dense_weights.size() + first_dense_bias.size() + second_dense_weights.size() + second_dense_bias.size();
-    int test_size = 6272 + 8 + 200 + 8 + 1600 + 8 + 102400 + 128 + 1280 + 10;
-    assert(all_data_size == test_size);
+    //int test_size = 6272 + 8 + 200 + 8 + 1600 + 8 + 102400 + 128 + 1280 + 10;
+    //int test_size = 12544 + 16 + 200 + 8 + 1600 + 8 + 102400 + 128 + 1280 + 10;
+    //cout << "flattened images size " << flattened_images.size() << endl;
+    //cout << "all data size " << all_data_size << endl;
+    //assert(all_data_size == test_size);
     //cout << "vec to grad calc reserve size is " << test_size << endl;
     all_data.reserve(all_data_size);
 
@@ -433,7 +437,13 @@ int main(int argc, char const *argv[]) {
     float batch_loss = 0;
     int batch_idx = 0;
     //num_worker_images = 5; // for testing
+    std::chrono::high_resolution_clock::time_point batch_start_time, batch_end_time, total_start_time, total_end_time;
+    long duration = 0;
+    int num_demo_images = 4800;
+    int num_demo_images_idx = 0;
+    total_start_time = std::chrono::high_resolution_clock::now();
     for(int n = 0; n < num_worker_images; n += NUM_WORKERS) {
+        batch_start_time = std::chrono::high_resolution_clock::now();
         batch_loss = 0;
         init_grads(num_filters, num_channels, filter_dim, dense_first_in, dense_first_out_dim); // set global vectors to 0
         cout << "processing batch " << batch_idx << endl;
@@ -477,7 +487,7 @@ int main(int argc, char const *argv[]) {
         float loss_3 = f3.get();
         float loss_4 = f4.get();
         batch_loss = loss_1 + loss_2 + loss_3 + loss_4;
-        cout << "Loss for batch " << batch_idx++ << ": " << batch_loss / batch_size << endl;
+        cout << "Loss for batch " << batch_idx << ": " << batch_loss / batch_size << endl;
         
         cnn.get_conv_layers()[0].set_dF(first_dF);
         cnn.get_conv_layers()[1].set_dF(second_dF);
@@ -491,5 +501,17 @@ int main(int argc, char const *argv[]) {
 
         print_global_grads(cnn);
         cnn.adam();
+        batch_end_time = std::chrono::high_resolution_clock::now();
+        auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(batch_end_time - batch_start_time);
+        cout << "time for batch " << batch_idx << ": " << ms_int.count() << "ms\n\n\n";
+        batch_idx++;
+        num_demo_images_idx += batch_size;
+        if(num_demo_images_idx >= num_demo_images)
+            break;
     }
+    total_end_time = std::chrono::high_resolution_clock::now();
+    auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(total_end_time - total_start_time);
+    cout << "time for 9600 images " << ms_int.count() << "ms\n\n\n";
+    // batch size 32, 9600 images, 129 seconds
+    // batch size 64, 9600 images, 125 seconds
 }
