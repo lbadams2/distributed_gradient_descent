@@ -46,9 +46,12 @@ int main(int argc, char const *argv[]) {
     bool reset_grads = true;
     std::chrono::high_resolution_clock::time_point batch_start_time, batch_end_time, total_start_time, total_end_time;
     long duration = 0;
-    int num_demo_images = 4800;
+    int num_demo_images = 9600;
     int num_demo_images_idx = 0;
     total_start_time = std::chrono::high_resolution_clock::now();
+    std::ofstream myfile;
+    string file_name("single_runtime_metrics/single_" + std::to_string(batch_size) + ".txt");
+    myfile.open(file_name);
     for(int n = 0; n < num_batches; n++) {
         batch_start_time = std::chrono::high_resolution_clock::now();
         batch_loss = 0;
@@ -70,7 +73,9 @@ int main(int argc, char const *argv[]) {
         cnn.adam();
         batch_end_time = std::chrono::high_resolution_clock::now();
         auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(batch_end_time - batch_start_time);
-        cout << "time for batch " << n << ": " << ms_int.count() << "ms\n\n\n";
+        auto ms_int_count = ms_int.count();
+        cout << "time for batch " << n << ": " << ms_int_count << "ms\n\n\n";
+        myfile << ms_int_count << "\n";
         num_demo_images_idx += batch_size;
         if(num_demo_images_idx >= num_demo_images)
             break;
@@ -78,5 +83,6 @@ int main(int argc, char const *argv[]) {
     total_end_time = std::chrono::high_resolution_clock::now();
     auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(total_end_time - total_start_time);
     cout << "time for " << num_demo_images << " images " << ms_int.count() << "ms\n\n\n";
+    myfile.close();
     // takes 190 seconds for 4800 images and batch size of 32
 }
