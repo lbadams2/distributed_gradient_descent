@@ -439,15 +439,21 @@ int main(int argc, char const *argv[]) {
     //num_worker_images = 5; // for testing
     std::chrono::high_resolution_clock::time_point batch_start_time, batch_end_time, total_start_time, total_end_time;
     long duration = 0;
-    int num_demo_images = 4800;
+    int num_demo_images = 9600;
     int num_demo_images_idx = 0;
     total_start_time = std::chrono::high_resolution_clock::now();
+    std::ofstream myfile;
+    string file_name("runtime_metrics/optimizer_" + std::to_string(batch_size) + ".txt");
+    myfile.open(file_name);
+
+    // num_worker_images decreases as batch_size increases, each worker_image is batch_size / num_workers images concatenated
+    // each iteration of this loop is 1 batch
     for(int n = 0; n < num_worker_images; n += NUM_WORKERS) {
         batch_start_time = std::chrono::high_resolution_clock::now();
         batch_loss = 0;
         init_grads(num_filters, num_channels, filter_dim, dense_first_in, dense_first_out_dim); // set global vectors to 0
         cout << "processing batch " << batch_idx << endl;
-        vector<float> worker1_images = worker_images[n];
+        vector<float> worker1_images = worker_images[n]; // batch_size / num_workers images
         vector<float> worker2_images = worker_images[n+1];
         vector<float> worker3_images = worker_images[n+2];
         vector<float> worker4_images = worker_images[n+3];
@@ -503,12 +509,15 @@ int main(int argc, char const *argv[]) {
         cnn.adam();
         batch_end_time = std::chrono::high_resolution_clock::now();
         auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(batch_end_time - batch_start_time);
-        cout << "time for batch " << batch_idx << ": " << ms_int.count() << "ms\n\n\n";
+        auto ms_int_count = ms_int.count();
+        cout << "time for batch " << batch_idx << ": " << ms_int_count << "ms\n\n\n";
+        myfile << ms_int_count << "\n";
         batch_idx++;
         num_demo_images_idx += batch_size;
         if(num_demo_images_idx >= num_demo_images)
             break;
     }
+    myfile.close();
     total_end_time = std::chrono::high_resolution_clock::now();
     auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(total_end_time - total_start_time);
     cout << "time for " << num_demo_images << " images " << ms_int.count() << "ms\n\n\n";

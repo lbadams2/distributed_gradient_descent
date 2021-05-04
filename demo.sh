@@ -16,3 +16,5 @@ docker-compose logs -t -f grad_calc_4
 docker-compose logs -t -f optimizer
 docker-compose down
 docker-compose rm
+
+docker cp 99309c8ce5aa:/home/dockerc/ /host/path/target

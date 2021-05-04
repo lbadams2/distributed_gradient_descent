@@ -191,6 +191,9 @@ int main(int argc, char const *argv[]) {
     int batch_idx = 0;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
     long duration = 0;
+    std::ofstream myfile;
+    string file_name("runtime_metrics/grad_calc" + std::to_string(port) + "_" + std::to_string(batch_size) + ".txt");
+    myfile.open(file_name);
     while(true) {
         if (listen(server_fd, 3) < 0)
         {
@@ -242,8 +245,17 @@ int main(int argc, char const *argv[]) {
         }
         end_time = std::chrono::high_resolution_clock::now();
         auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        cout << "time for batch " << batch_idx << ": " << ms_int.count() << "ms\n\n\n";
-
+        auto ms_int_count = ms_int.count();
+        cout << "time for batch " << batch_idx << ": " << ms_int_count << "ms\n\n\n";
+        myfile << ms_int_count << "\n";
+        
+        //if(batch_idx >= 298)
+        //    myfile.flush();
+        //if(batch_idx >= 148)
+        //    myfile.flush();
+        //if(batch_idx >= 72)
+        //    myfile.flush();
+        
         vector<float> all_grads = get_grads(cnn, batch_loss);
         float* all_grads_arr = all_grads.data();
         //print_grads(all_grads_arr);
@@ -251,6 +263,7 @@ int main(int argc, char const *argv[]) {
         printf("gradients sent\n");
         batch_idx++;
     }
+    myfile.close();
     return 0;
 
 }
