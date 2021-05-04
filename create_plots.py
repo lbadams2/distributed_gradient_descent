@@ -3,7 +3,10 @@ import numpy as np
 
 # runtime of batch size 32 is 134546ms for 9600 images
 # runtime of batch size 64 is 123315ms for 9600 images
-# runtim of batch size 128 is 119577ms for 9600 images
+# runtime of batch size 128 is 119577ms for 9600 images
+# single 32 384172ms 9600 images
+# single 64 374289ms 9600 images
+# single 128 370257ms 9600 images
 full_path = '/Users/liam_adams/my_repos/csc724_project/'
 
 def plot_runtime(batch_size):
@@ -63,7 +66,23 @@ def plot_opt_memory():
     plt.title('Memory usage for optimizer')
     plt.show()
 
+def plot_single_runtime(batch_size):
+    grad_calc1_fn = 'single_runtime_metrics/single_{}.txt'.format(batch_size)
+    with open(full_path + grad_calc1_fn) as f:
+        grad_calc1_content = f.readlines()
+    grad_calc1_content = [x.strip() for x in grad_calc1_content]
+
+    grad_calc_np = np.asarray(grad_calc1_content, dtype=np.float32)
+    plt.plot(grad_calc_np)
+    plt.title('Single core runtime of batch size ' + str(batch_size))
+    #plt.locator_params(axis='y', nbins=10)
+    #y_ticks = np.arange(1130, 1270, 20)
+    #plt.yticks(y_ticks)
+    plt.show()
+
+
 if __name__ == '__main__':
     #plot_runtime(128)
     #plot_memory(128)
-    plot_opt_memory()
+    #plot_opt_memory()
+    plot_single_runtime(128)
