@@ -25,4 +25,8 @@ model.compile(
     metrics=['accuracy']
 )
 
-model.fit(train_images, train_labels, epochs=1)
+model.fit(train_images, train_labels, batch_size=128, epochs=1)
+
+#tf 0.9936 accuracy batch size 32 5 epochs 89.80s
+#tf 0.9924 accuracy batch size 64 5 epochs 84.94s
+#tf 0.9906 accuracy batch size 128 5 epochs 79.52s
